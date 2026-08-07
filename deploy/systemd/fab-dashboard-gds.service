@@ -1,0 +1,15 @@
+[Unit]
+Description=fab-dashboard GDS analyzer sidecar (FastAPI)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/fab-dashboard/services/gds-analyzer
+ExecStart=%h/fab-dashboard/services/gds-analyzer/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8003
+Restart=on-failure
+RestartSec=5
+StandardOutput=append:%h/fab-dashboard/logs/gds-analyzer.log
+StandardError=append:%h/fab-dashboard/logs/gds-analyzer.log
+
+[Install]
+WantedBy=default.target

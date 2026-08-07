@@ -1,0 +1,22 @@
+{
+  "name": "fab-dashboard",
+  "private": true,
+  "workspaces": [
+    "apps/web",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace=apps/web",
+    "build": "npm run build --workspace=apps/web",
+    "ingest:update": "tsx packages/ingestion/src/run-update.ts",
+    "ingest:cutover": "tsx packages/ingestion/src/run-cutover-check.ts",
+    "ingest:backfill": "tsx packages/ingestion/src/backfill.ts",
+    "ingest:dry-run": "tsx packages/ingestion/src/cli-dry-run.ts",
+    "test:scheduling": "vitest run --root packages/scheduling"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3",
+    "vitest": "^3.0.5"
+  }
+}

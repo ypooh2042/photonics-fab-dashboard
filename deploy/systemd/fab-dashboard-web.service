@@ -1,0 +1,16 @@
+[Unit]
+Description=fab-dashboard Next.js web app
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/fab-dashboard/apps/web
+ExecStart=%h/.local/bin/npx next start -p 8001
+Environment=NODE_ENV=production
+Restart=on-failure
+RestartSec=5
+StandardOutput=append:%h/fab-dashboard/logs/web.log
+StandardError=append:%h/fab-dashboard/logs/web.log
+
+[Install]
+WantedBy=default.target

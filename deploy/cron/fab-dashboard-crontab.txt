@@ -1,0 +1,5 @@
+# fab-dashboard: incremental note ingestion, every 3 hours
+0 */3 * * * cd /home/<username>/fab-dashboard && PATH="/home/<username>/.local/bin:$PATH" VAULT_PATH="/home/<username>/문서/Obsidian Vault" DB_PATH="./data/fab_dashboard.sqlite" /home/<username>/.local/bin/npx tsx packages/ingestion/src/run-update.ts >> /home/<username>/fab-dashboard/logs/ingestion.log 2>&1
+
+# fab-dashboard: weekly cutover check (has it just crossed the configured cutover boundary?), hourly
+5 * * * * cd /home/<username>/fab-dashboard && PATH="/home/<username>/.local/bin:$PATH" DB_PATH="./data/fab_dashboard.sqlite" /home/<username>/.local/bin/npx tsx packages/ingestion/src/run-cutover-check.ts >> /home/<username>/fab-dashboard/logs/cutover.log 2>&1

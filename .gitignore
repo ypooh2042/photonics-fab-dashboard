@@ -1,0 +1,20 @@
+node_modules/
+.next/
+data/
+logs/
+*.sqlite
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
+.env
+.env.local
+services/gds-analyzer/venv/
+services/gds-analyzer/__pycache__/
+**/__pycache__/
+*.pyc
+.DS_Store
+
+# Contains real lab-notebook content (device names, experimental details,
+# photo filenames) used as LLM few-shot examples — real IP, kept local-only.
+# See few-shot-examples.example.ts for the format to fill in your own.
+packages/ingestion/src/prompts/few-shot-examples.ts

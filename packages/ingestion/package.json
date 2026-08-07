@@ -1,0 +1,13 @@
+{
+  "name": "@fab-dashboard/ingestion",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "better-sqlite3": "^11.8.1",
+    "@fab-dashboard/scheduling": "*"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.12",
+    "@types/node": "^22.10.5"
+  }
+}
