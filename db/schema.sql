@@ -121,6 +121,20 @@ CREATE TABLE IF NOT EXISTS recipe_definitions (
   UNIQUE(category_id, recipe_name)
 );
 
+-- Admin-managed markers for equipment-level events (e.g. a shutdown for fab
+-- construction) that should show up on that recipe's trend chart as a vertical
+-- line. Scoped per (category, recipe_name) rather than per-category, since
+-- recipes within the same category can run on different physical equipment.
+CREATE TABLE IF NOT EXISTS recipe_events (
+  id INTEGER PRIMARY KEY,
+  category_id INTEGER NOT NULL REFERENCES recipe_categories(id),
+  recipe_name TEXT NOT NULL,
+  event_date TEXT NOT NULL,
+  label TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_recipe_events_recipe ON recipe_events(category_id, recipe_name, event_date);
+
 CREATE TABLE IF NOT EXISTS note_ingestion_state (
   note_path TEXT PRIMARY KEY,
   mtime TEXT NOT NULL,

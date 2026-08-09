@@ -1,6 +1,6 @@
 # Database 코드맵
 
-**마지막 업데이트:** 2026-08-07
+**마지막 업데이트:** 2026-08-09
 **스키마 파일:** `db/schema.sql` (수동 관리, 마이그레이션 도구 없음)
 **DB 파일:** `data/fab_dashboard.sqlite` (better-sqlite3, WAL, gitignore)
 
@@ -40,9 +40,17 @@
 | `recipe_categories` | 공정 카테고리 + `param_schema`(JSON) — 시드 7종 |
 | `recipe_entries` | 칩 런별 레시피 기록 (params JSON, is_standard_condition, LLM confidence) |
 | `recipe_definitions` | 레시피의 고정 스텝 설명 + `entry_mode`(`full`/`log_only`) |
+| `recipe_events` | 트렌드 차트용 관리자 이벤트 마커 (event_date, label) → `recipe_categories` |
 
 > `entry_mode='log_only'`: 모든 내용이 `description`에 있고, 엔트리는 entry_date만
 > 기록 (params 추출 안 함). `'full'`(기본): 엔트리가 LLM 추출 per-run params를 가짐.
+
+> `recipe_events`는 **(category_id, recipe_name) 개별 쌍**에 스코프됩니다
+> (카테고리 단위가 아님) — 같은 카테고리라도 레시피마다 다른 물리 장비를 쓸 수
+> 있기 때문. 인덱스 `idx_recipe_events_recipe(category_id, recipe_name, event_date)`.
+> 트렌드 차트를 그리는 카테고리(`etching`, `deposition`)에서만 편집/렌더됩니다.
+> 이 테이블은 스키마에 마이그레이션 도구가 없어 `db/schema.sql` 반영 + 라이브
+> DB에 수동 `CREATE TABLE`로 적용했습니다 (이 프로젝트의 수동 ALTER 규약).
 
 시드 카테고리: `cleaning_coating`, `lithography`, `photolithography`,
 `development`, `etching`, `deposition`, `other`.
@@ -96,7 +104,7 @@
 ## 관계 다이어그램 (핵심)
 
 ```
-projects ─< chip_runs ─< pipeline_stage_instances >─ recipe_entries >─ recipe_categories
+projects ─< chip_runs ─< pipeline_stage_instances >─ recipe_entries >─ recipe_categories ─< recipe_events
                 │                                          │
                 └─< chip_run_photos >─ photos              └─ recipe_definitions
 

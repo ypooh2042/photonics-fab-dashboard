@@ -231,6 +231,24 @@ export function getRecipeDescription(categorySlug: string, recipeName: string): 
   return row?.description ?? null;
 }
 
+export interface RecipeEventRow {
+  id: number;
+  eventDate: string;
+  label: string;
+}
+
+/** Admin-managed markers (e.g. equipment shutdown) shown as vertical lines on this recipe's trend chart. */
+export function getRecipeEvents(categorySlug: string, recipeName: string): RecipeEventRow[] {
+  const db = getDb();
+  const rows = db
+    .prepare(
+      `SELECT re.id, re.event_date, re.label FROM recipe_events re JOIN recipe_categories rc ON rc.id = re.category_id
+       WHERE rc.slug = ? AND re.recipe_name = ? ORDER BY re.event_date ASC, re.id ASC`,
+    )
+    .all(categorySlug, recipeName) as { id: number; event_date: string; label: string }[];
+  return rows.map((r) => ({ id: r.id, eventDate: r.event_date, label: r.label }));
+}
+
 export type RecipeEntryMode = "full" | "log_only";
 
 /**

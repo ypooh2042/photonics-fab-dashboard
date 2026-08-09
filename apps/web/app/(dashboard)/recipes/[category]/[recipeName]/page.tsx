@@ -1,6 +1,13 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getRecipeEntries, getRecipeDescription, getRecipeEntryMode, listRecipeCategories, recipeExists } from "@/lib/data";
+import {
+  getRecipeEntries,
+  getRecipeDescription,
+  getRecipeEntryMode,
+  getRecipeEvents,
+  listRecipeCategories,
+  recipeExists,
+} from "@/lib/data";
 import RecipeTrendChart from "@/components/RecipeTrendChart";
 
 const TREND_CATEGORIES = new Set(["etching", "deposition"]);
@@ -19,6 +26,7 @@ export default async function RecipeDetailPage({
   const description = getRecipeDescription(category, decodedName);
   const entryMode = getRecipeEntryMode(category, decodedName);
   const logOnly = entryMode === "log_only";
+  const events = TREND_CATEGORIES.has(category) ? getRecipeEvents(category, decodedName) : [];
 
   return (
     <div className="max-w-3xl">
@@ -43,7 +51,7 @@ export default async function RecipeDetailPage({
       )}
 
       {!logOnly && TREND_CATEGORIES.has(category) && entries.length > 0 && (
-        <RecipeTrendChart entries={entries} categorySlug={category} />
+        <RecipeTrendChart entries={entries} categorySlug={category} events={events} />
       )}
 
       {entries.length === 0 ? (

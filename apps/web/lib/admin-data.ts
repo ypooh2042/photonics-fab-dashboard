@@ -782,6 +782,61 @@ export function updateRecipeEntryMode(
   logAudit("update_recipe_entry_mode", "recipe_definitions", null, { categorySlug, recipeName }, { entryMode });
 }
 
+export interface RecipeEventRow {
+  id: number;
+  eventDate: string;
+  label: string;
+}
+
+/** Admin-managed markers (e.g. equipment shutdown) shown as vertical lines on this recipe's trend chart. */
+export function listRecipeEvents(categorySlug: string, recipeName: string): RecipeEventRow[] {
+  const db = getDb();
+  const categoryId = getCategoryId(db, categorySlug);
+  const rows = db
+    .prepare(
+      `SELECT id, event_date, label FROM recipe_events
+       WHERE category_id = ? AND recipe_name = ? ORDER BY event_date ASC, id ASC`,
+    )
+    .all(categoryId, recipeName) as { id: number; event_date: string; label: string }[];
+  return rows.map((r) => ({ id: r.id, eventDate: r.event_date, label: r.label }));
+}
+
+export function createRecipeEvent(categorySlug: string, recipeName: string, eventDate: string, label: string): void {
+  const db = getDb();
+  const categoryId = getCategoryId(db, categorySlug);
+
+  const info = db
+    .prepare(`INSERT INTO recipe_events (category_id, recipe_name, event_date, label) VALUES (?, ?, ?, ?)`)
+    .run(categoryId, recipeName, eventDate, label);
+
+  logAudit("create_recipe_event", "recipe_events", Number(info.lastInsertRowid), null, {
+    categorySlug,
+    recipeName,
+    eventDate,
+    label,
+  });
+}
+
+export function updateRecipeEvent(eventId: number, eventDate: string, label: string): void {
+  const db = getDb();
+  const before = db.prepare("SELECT * FROM recipe_events WHERE id = ?").get(eventId);
+  if (!before) throw new Error("존재하지 않는 이벤트입니다");
+
+  db.prepare("UPDATE recipe_events SET event_date = ?, label = ? WHERE id = ?").run(eventDate, label, eventId);
+
+  logAudit("update_recipe_event", "recipe_events", eventId, before, { eventDate, label });
+}
+
+export function deleteRecipeEvent(eventId: number): void {
+  const db = getDb();
+  const before = db.prepare("SELECT * FROM recipe_events WHERE id = ?").get(eventId);
+  if (!before) return;
+
+  db.prepare("DELETE FROM recipe_events WHERE id = ?").run(eventId);
+
+  logAudit("delete_recipe_event", "recipe_events", eventId, before, null);
+}
+
 /** Reassigns one stage instance to a different chip run (e.g. two chip_runs that turned out to be the same real run). */
 export function moveStage(stageId: number, targetChipRunId: number): void {
   const db = getDb();

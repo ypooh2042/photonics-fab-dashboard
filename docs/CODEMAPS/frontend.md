@@ -1,6 +1,6 @@
 # Frontend 코드맵
 
-**마지막 업데이트:** 2026-08-07
+**마지막 업데이트:** 2026-08-09
 **진입점:** `apps/web/app/layout.tsx` (루트), `apps/web/app/(dashboard)/layout.tsx`,
 `apps/web/app/(public)/login/page.tsx`
 
@@ -82,11 +82,26 @@ apps/web/app/
 | `ChipRunCard.tsx`, `PipelineTimeline.tsx` | 칩 진행 상황 표시 |
 | `ChipRunAdminEditor.tsx` | 칩 런/스테이지 관리자 편집 |
 | `RecipeAdminEditor.tsx`, `CreateRecipeForm.tsx`, `RecipeTrendChart.tsx` | 레시피 편집/추세(recharts) |
+| `RecipeEventAdmin.tsx` | 레시피 이벤트 마커 CRUD (RecipeAdminEditor에 임베드, 트렌드 카테고리만) |
 | `QueueTable.tsx` | 노광 큐 테이블 |
 | `ChipLayoutEditor.tsx`, `WindowCanvas.tsx`, `LayoutGridPreview.tsx`, `ChipLayoutPreviewModal.tsx`, `ChipLayoutPreviewViewer.tsx` | 칩 배치 에디터/캔버스 (react-zoom-pan-pinch) |
 | `EquipmentUserAdmin.tsx`, `EbeamCurrentAdmin.tsx`, `ResistDoseAdmin.tsx` | 설정 관리 폼 |
 | `ProjectFilterSelect.tsx` | 프로젝트 필터 |
 | `PhotoLightbox.tsx` | 사진 라이트박스 |
+
+> **RecipeTrendChart x축 키:** Recharts 3에서 여러 엔트리가 같은 날짜를 공유하면
+> (하루에 여러 런) hover 활성 포인트 매칭이 깨지므로, x축 카테고리 키가 `date`가
+> 아니라 합성 `key`(`${entryDate}#${id}`)입니다. 눈에 보이는 눈금/툴팁 라벨은
+> `tickFormatter`/`labelFormatter`가 `#id`를 떼고 날짜만 표시합니다
+> (`EtchTrendChart`·`GenericTrendChart` 공통).
+
+> **이벤트 마커 렌더링:** 트렌드 카테고리(`etching`, `deposition`) 상세 페이지에서
+> `RecipeTrendChart`는 `events` prop을 받아 각 이벤트를 Recharts `<ReferenceLine>`
+> (반투명 빨강)로 그립니다. x축이 진짜 시간축이 아니라 카테고리축이므로, 이벤트는
+> 정확한 날짜 위치가 아니라 **가장 가까운 로그 엔트리 위치**로 스냅됩니다
+> (`nearestKey()` 헬퍼). 선은 작은 ▣ 마커만 표시하고(라벨 겹침 방지), 마커 클릭 시
+> SVG `foreignObject` 팝업(날짜+라벨)을 토글합니다. `events`는 페이지에서
+> `getRecipeEvents`로 서버 조회됩니다.
 
 ## 외부 의존성 (UI 관련)
 

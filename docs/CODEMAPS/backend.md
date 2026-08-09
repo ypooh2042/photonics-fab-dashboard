@@ -1,6 +1,6 @@
 # Backend 코드맵 (API + lib + 인증)
 
-**마지막 업데이트:** 2026-08-07
+**마지막 업데이트:** 2026-08-09
 **진입점:** `apps/web/proxy.ts` (인증 게이트), `apps/web/app/api/**/route.ts`,
 `apps/web/lib/*`
 
@@ -84,6 +84,8 @@ admin/
   chip-run-photos/[crpId]/…         칩 런 사진 관리/이동
   stages/[stageId]/…                스테이지 편집/이동/사진 reorder
   recipes/…                         레시피 엔트리/정의/rename/entry-mode/description
+  recipe-events/route.ts            레시피 이벤트 마커 목록(?category=&recipeName=)/생성
+  recipe-events/[id]/route.ts       이벤트 마커 수정(PATCH)/삭제(DELETE)
   projects/[projectId]/route.ts     프로젝트 관리
   equipment-users/…                 장비 사용자 + capacities
   ebeam-currents/[currentNa]/…      e-beam 전류 프리셋
@@ -102,8 +104,8 @@ admin/
 |------|------|-------------|
 | `db.ts` | better-sqlite3 싱글턴 (`DB_PATH` env) | `getDb()` |
 | `auth.ts` | JWT 세션/operator 잠금 | 위 인증 표 참고 |
-| `data.ts` | 칩 런/레시피 읽기 뷰 | `listChipRuns`, `getChipRunDetail`, `listRecipeCategories`, `getRecipeEntryMode` |
-| `admin-data.ts` (~40KB) | 칩 런/스테이지/레시피 편집 로직 | `updateStage`, `addStage`, `reorderStages`, `updateRecipeEntry`, 리뷰 뷰 |
+| `data.ts` | 칩 런/레시피 읽기 뷰 | `listChipRuns`, `getChipRunDetail`, `listRecipeCategories`, `getRecipeEntryMode`, `getRecipeEvents` |
+| `admin-data.ts` (~40KB) | 칩 런/스테이지/레시피 편집 로직 | `updateStage`, `addStage`, `reorderStages`, `updateRecipeEntry`, `listRecipeEvents`, `createRecipeEvent`, `updateRecipeEvent`, `deleteRecipeEvent`, 리뷰 뷰 |
 | `queue.ts` (~27KB) | 주간 큐/용량 스냅샷/재계산 | `getWeeklySettings`, `getActiveWeekId`, `recomputeWeekUser`, `getQueueSections`, `createSubmission` |
 | `chip-layout.ts` (~45KB) | 카세트 윈도우/배치/패턴 슬롯 | `createJob`, `assignPatternSlot`, `generateJobPreviewSvgs` (윈도우 정의는 내부 전용) |
 | `geometry.ts` | 공유 `GridBounds` 타입 (server/client 공용) | `GridBounds` |

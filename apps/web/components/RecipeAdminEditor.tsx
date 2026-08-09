@@ -3,6 +3,9 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { RecipeEntryRow } from "@/lib/data";
+import RecipeEventAdmin from "@/components/RecipeEventAdmin";
+
+const TREND_CATEGORIES = new Set(["etching", "deposition"]);
 
 interface OtherRecipe {
   recipeName: string;
@@ -187,6 +190,12 @@ export default function RecipeAdminEditor({
           {descriptionSaved && <span className="text-xs text-green-500">저장됨</span>}
         </div>
       </label>
+
+      {TREND_CATEGORIES.has(categorySlug) && (
+        <div className="rounded-lg border border-black/10 dark:border-white/15 p-3">
+          <RecipeEventAdmin categorySlug={categorySlug} recipeName={recipeName} />
+        </div>
+      )}
 
       <div className="rounded-lg border border-red-500/30 p-3 flex items-center gap-2">
         <span className="text-sm">이 레시피 전체 삭제:</span>
