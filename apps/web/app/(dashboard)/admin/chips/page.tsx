@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useLanguage } from "@/components/LanguageContext";
 
 interface ChipRun {
   id: number;
@@ -24,6 +25,7 @@ export default function AdminChipsPage() {
   const [label, setLabel] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { t, lang } = useLanguage();
 
   function load() {
     fetch("/api/admin/chip-runs")
@@ -54,7 +56,7 @@ export default function AdminChipsPage() {
     setBusy(false);
     if (!res.ok) {
       const d = await res.json().catch(() => ({}));
-      setError(d.error ?? "추가 실패");
+      setError(d.error ?? t("addFailed"));
       return;
     }
     setLabel("");
@@ -62,9 +64,7 @@ export default function AdminChipsPage() {
   }
 
   async function removeChipRun(cr: ChipRun) {
-    const warned = confirm(
-      `"${cr.label}"을(를) 삭제하면 관련 스테이지/사진 데이터가 모두 없어지고 되돌릴 수 없습니다. 정말 삭제하시겠습니까?`,
-    );
+    const warned = confirm(`"${cr.label}"${lang === "ko" ? "" : " "}${t("confirmDeleteChipRun")}`);
     if (!warned) return;
     setBusy(true);
     await fetch(`/api/admin/chip-runs/${cr.id}`, { method: "DELETE" });
@@ -74,11 +74,8 @@ export default function AdminChipsPage() {
 
   return (
     <div className="max-w-2xl">
-      <h1 className="text-xl font-semibold mb-1">칩 런 관리</h1>
-      <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
-        &quot;delivery&quot; 또는 &quot;completed_other&quot; 스테이지가 완료(complete) 상태가 되면 해당 칩 런은 자동으로 완료
-        처리됩니다.
-      </p>
+      <h1 className="text-xl font-semibold mb-1">{t("adminChipRuns")}</h1>
+      <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">{t("autoCompleteHint")}</p>
 
       <div className="flex flex-col gap-2 mb-6">
         {activeRuns.map((cr) => (
@@ -95,7 +92,7 @@ export default function AdminChipsPage() {
               <span className="opacity-50 ml-2">{cr.lastUpdatedDate}</span>
             </div>
             <button onClick={() => removeChipRun(cr)} disabled={busy} className="text-red-500 text-xs">
-              삭제
+              {t("delete")}
             </button>
           </div>
         ))}
@@ -104,7 +101,7 @@ export default function AdminChipsPage() {
       {completeRuns.length > 0 && (
         <details className="mb-6 rounded-md border border-black/10 dark:border-white/15">
           <summary className="cursor-pointer select-none px-3 py-2 text-sm font-medium">
-            완료된 칩 런 목록 ({completeRuns.length})
+            {t("completedChipRunsHeading")} ({completeRuns.length})
           </summary>
           <div className="flex flex-col gap-2 p-3 pt-0">
             {completeRuns.map((cr) => (
@@ -121,7 +118,7 @@ export default function AdminChipsPage() {
                   <span className="opacity-50 ml-2">{cr.lastUpdatedDate}</span>
                 </div>
                 <button onClick={() => removeChipRun(cr)} disabled={busy} className="text-red-500 text-xs">
-                  삭제
+                  {t("delete")}
                 </button>
               </div>
             ))}
@@ -130,7 +127,7 @@ export default function AdminChipsPage() {
       )}
 
       <div className="rounded-lg border border-dashed border-black/20 dark:border-white/25 p-4 flex flex-col gap-2">
-        <p className="text-sm font-medium">새 칩 런 추가</p>
+        <p className="text-sm font-medium">{t("addNewChipRunLabel")}</p>
         <select
           value={projectId}
           onChange={(e) => setProjectId(Number(e.target.value))}
@@ -145,7 +142,7 @@ export default function AdminChipsPage() {
         <input
           value={label}
           onChange={(e) => setLabel(e.target.value)}
-          placeholder="Run 이름 (예: 0801_EMC_run)"
+          placeholder={t("chipRunNamePlaceholder")}
           className="rounded-md border border-black/15 dark:border-white/20 bg-transparent px-3 py-2 text-sm"
         />
         {error && <p className="text-sm text-red-500">{error}</p>}
@@ -154,7 +151,7 @@ export default function AdminChipsPage() {
           disabled={busy || !label.trim()}
           className="rounded-md bg-blue-600 text-white py-2 text-sm disabled:opacity-50"
         >
-          추가
+          {t("add")}
         </button>
       </div>
     </div>

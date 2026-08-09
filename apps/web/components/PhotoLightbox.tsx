@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { displayFilename } from "@/lib/photo-display";
+import { useLanguage } from "@/components/LanguageContext";
 
 export interface LightboxPhoto {
   id: number;
@@ -11,6 +12,7 @@ export interface LightboxPhoto {
 
 export default function PhotoLightbox({ photos }: { photos: LightboxPhoto[] }) {
   const [openIndex, setOpenIndex] = useState<number | null>(null);
+  const { lang, t } = useLanguage();
 
   if (photos.length === 0) return null;
 
@@ -56,7 +58,7 @@ export default function PhotoLightbox({ photos }: { photos: LightboxPhoto[] }) {
                 rel="noreferrer"
                 className="text-white underline"
               >
-                {displayFilename(current.filename)} 열기
+                {lang === "ko" ? `${displayFilename(current.filename)} 열기` : `Open ${displayFilename(current.filename)}`}
               </a>
             ) : (
               // eslint-disable-next-line @next/next/no-img-element
@@ -68,16 +70,16 @@ export default function PhotoLightbox({ photos }: { photos: LightboxPhoto[] }) {
             )}
             <div className="text-white text-sm flex items-center gap-4">
               {openIndex! > 0 && (
-                <button onClick={() => setOpenIndex((i) => (i! > 0 ? i! - 1 : i))}>← 이전</button>
+                <button onClick={() => setOpenIndex((i) => (i! > 0 ? i! - 1 : i))}>← {t("previousLabel")}</button>
               )}
               <span>{current.caption ?? displayFilename(current.filename)}</span>
               {openIndex! < photos.length - 1 && (
                 <button onClick={() => setOpenIndex((i) => (i! < photos.length - 1 ? i! + 1 : i))}>
-                  다음 →
+                  {t("nextLabel")} →
                 </button>
               )}
               <button onClick={() => setOpenIndex(null)} className="opacity-70">
-                닫기 ✕
+                {t("close")} ✕
               </button>
             </div>
           </div>

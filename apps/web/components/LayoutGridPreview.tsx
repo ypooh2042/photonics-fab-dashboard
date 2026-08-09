@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { TransformWrapper, TransformComponent, useTransformEffect } from "react-zoom-pan-pinch";
 import type { GridBounds } from "@/lib/geometry";
+import { useLanguage } from "@/components/LanguageContext";
 
 export type { GridBounds };
 
@@ -104,6 +105,7 @@ interface Props {
 
 export default function LayoutGridPreview({ svg, visibleLayerKeys, gridBounds, showFieldGrid = true }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const { t } = useLanguage();
   const parsed = useMemo(() => {
     const m = svg.match(/^<svg[^>]*viewBox="([-\d.]+) ([-\d.]+) ([-\d.]+) ([-\d.]+)"[^>]*>([\s\S]*)<\/svg>$/);
     if (!m) return null;
@@ -125,7 +127,7 @@ export default function LayoutGridPreview({ svg, visibleLayerKeys, gridBounds, s
   // regardless of when/how the underlying DOM nodes get (re)created.
   const visibleSelector = [...visibleLayerKeys].map((k) => `g.gds-layer[data-layer="${k}"]`).join(", ");
 
-  if (!parsed) return <p className="text-sm opacity-60">미리보기를 표시할 수 없습니다.</p>;
+  if (!parsed) return <p className="text-sm opacity-60">{t("previewUnavailable")}</p>;
 
   const fontSize = Math.max(parsed.width, parsed.height) / 55;
 
@@ -156,11 +158,7 @@ export default function LayoutGridPreview({ svg, visibleLayerKeys, gridBounds, s
   return (
     <div>
       {showFieldGrid && (
-        <p className="text-sm font-bold text-black dark:text-white mb-2">
-          옅은 격자 한 칸이 e-beam이 한 번에 그릴 수 있는 노광 필드(1000×1000µm)입니다. 패턴이 격자 한 칸에 걸쳐 있으면 stitching
-          error(미세 틀어짐, 최대 5~10nm)가 발생할 수 있습니다. 이를 참고하여 중요한 패턴은 한 격자 안에 들어오도록 레이아웃을
-          수정하는 것이 좋습니다.
-        </p>
+        <p className="text-sm font-bold text-black dark:text-white mb-2">{t("fieldGridHint")}</p>
       )}
       <div
         ref={containerRef}
@@ -175,7 +173,7 @@ export default function LayoutGridPreview({ svg, visibleLayerKeys, gridBounds, s
                 onClick={() => resetTransform()}
                 className="absolute top-2 right-2 z-10 rounded-md border border-black/15 dark:border-white/20 bg-white/90 dark:bg-neutral-900/90 px-2 py-1 text-xs hover:bg-white dark:hover:bg-neutral-900"
               >
-                처음 위치로
+                {t("resetPositionLabel")}
               </button>
               <ScaleBar containerRef={containerRef} viewBoxWidthUm={parsed.width} viewBoxHeightUm={parsed.height} />
               <TransformComponent

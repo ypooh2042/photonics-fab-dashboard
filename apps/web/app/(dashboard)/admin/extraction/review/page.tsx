@@ -1,19 +1,25 @@
 import Link from "next/link";
 import { listNeedsReviewChipRuns, listNeedsReviewRecipeEntries } from "@/lib/admin-data";
+import { getServerLang } from "@/lib/i18n-server";
+import { translate } from "@/lib/i18n";
 
 export const dynamic = "force-dynamic";
 
 export default async function AdminExtractionReviewPage() {
   const chipRuns = listNeedsReviewChipRuns();
   const recipeEntries = listNeedsReviewRecipeEntries();
+  const lang = await getServerLang();
+  const t = (key: Parameters<typeof translate>[0]) => translate(key, lang);
 
   return (
     <div className="max-w-3xl flex flex-col gap-8">
-      <h1 className="text-xl font-semibold">자동추출 검수</h1>
+      <h1 className="text-xl font-semibold">{t("extractionReviewLabel")}</h1>
       <div>
-        <h2 className="font-medium mb-2">검수 필요 칩 런 ({chipRuns.length})</h2>
+        <h2 className="font-medium mb-2">
+          {t("needsReviewChipRunsHeading")} ({chipRuns.length})
+        </h2>
         {chipRuns.length === 0 ? (
-          <p className="text-sm opacity-60">없음</p>
+          <p className="text-sm opacity-60">{t("noneLabelShort")}</p>
         ) : (
           <div className="flex flex-col gap-1">
             {chipRuns.map((c) => (
@@ -35,9 +41,11 @@ export default async function AdminExtractionReviewPage() {
       </div>
 
       <div>
-        <h2 className="font-medium mb-2">검수 필요 레시피 항목 ({recipeEntries.length})</h2>
+        <h2 className="font-medium mb-2">
+          {t("needsReviewRecipeEntriesHeading")} ({recipeEntries.length})
+        </h2>
         {recipeEntries.length === 0 ? (
-          <p className="text-sm opacity-60">없음</p>
+          <p className="text-sm opacity-60">{t("noneLabelShort")}</p>
         ) : (
           <div className="flex flex-col gap-1">
             {recipeEntries.map((r) => (

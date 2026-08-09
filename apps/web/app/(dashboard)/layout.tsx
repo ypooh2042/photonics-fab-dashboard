@@ -1,8 +1,13 @@
 import Link from "next/link";
 import HeaderMenu from "@/components/HeaderMenu";
 import NavLink from "@/components/NavLink";
+import LanguageToggle from "@/components/LanguageToggle";
+import { getServerLang } from "@/lib/i18n-server";
+import { translate } from "@/lib/i18n";
 
-export default function DashboardLayout({ children }: { children: React.ReactNode }) {
+export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
+  const lang = await getServerLang();
+  const t = (key: Parameters<typeof translate>[0]) => translate(key, lang);
   return (
     <div className="min-h-screen flex flex-col">
       <header className="border-b border-black/10 dark:border-white/15 px-6 py-3 flex items-center gap-4">
@@ -12,13 +17,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         <nav className="nav-scroll min-w-0 flex-1 overflow-x-auto">
           <div className="flex items-center gap-5 text-sm w-max">
             <NavLink href="/" exact>
-              칩 진행 상황
+              {t("navChipProgress")}
             </NavLink>
-            <NavLink href="/recipes">레시피 위키</NavLink>
-            <NavLink href="/submit">노광 신청</NavLink>
-            <NavLink href="/queue">노광 큐</NavLink>
+            <NavLink href="/recipes">{t("navRecipeWiki")}</NavLink>
+            <NavLink href="/submit">{t("navSubmit")}</NavLink>
+            <NavLink href="/queue">{t("navQueue")}</NavLink>
           </div>
         </nav>
+        <LanguageToggle />
         <HeaderMenu />
       </header>
       <main className="flex-1 p-6">{children}</main>

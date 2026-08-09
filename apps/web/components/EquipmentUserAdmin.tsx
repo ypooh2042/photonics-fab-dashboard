@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useLanguage } from "@/components/LanguageContext";
 
 interface EquipmentUser {
   id: number;
@@ -19,10 +20,12 @@ export default function EquipmentUserAdmin() {
   const [busy, setBusy] = useState(false);
   const [savingCapacities, setSavingCapacities] = useState(false);
   const [capacityMessage, setCapacityMessage] = useState<string | null>(null);
+  const [capacitySaveOk, setCapacitySaveOk] = useState(false);
   const [newName, setNewName] = useState("");
   const [newAlias, setNewAlias] = useState("");
   const [newIsPermanent, setNewIsPermanent] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { t } = useLanguage();
 
   function load() {
     fetch("/api/admin/equipment-users")
@@ -52,21 +55,21 @@ export default function EquipmentUserAdmin() {
     setBusy(false);
     if (!res.ok) {
       const d = await res.json().catch(() => ({}));
-      setError(d.error ?? "수정 실패");
+      setError(d.error ?? t("updateFailed"));
       return;
     }
     load();
   }
 
   async function deleteUser(id: number, name: string) {
-    if (!confirm(`"${name}" 장비 사용자를 삭제할까요?`)) return;
+    if (!confirm(`"${name}" ${t("confirmDeleteEquipmentUser")}`)) return;
     setBusy(true);
     setError(null);
     const res = await fetch(`/api/admin/equipment-users/${id}`, { method: "DELETE" });
     setBusy(false);
     if (!res.ok) {
       const d = await res.json().catch(() => ({}));
-      setError(d.error ?? "삭제 실패");
+      setError(d.error ?? t("deleteFailed"));
       return;
     }
     load();
@@ -84,7 +87,7 @@ export default function EquipmentUserAdmin() {
     setBusy(false);
     if (!res.ok) {
       const d = await res.json().catch(() => ({}));
-      setError(d.error ?? "추가 실패");
+      setError(d.error ?? t("addFailed"));
       return;
     }
     setNewName("");
@@ -105,10 +108,12 @@ export default function EquipmentUserAdmin() {
     setSavingCapacities(false);
     const d = await res.json().catch(() => ({}));
     if (!res.ok) {
-      setCapacityMessage(d.error ?? "저장 실패");
+      setCapacitySaveOk(false);
+      setCapacityMessage(d.error ?? t("saveFailed"));
       return;
     }
-    setCapacityMessage("저장됨");
+    setCapacitySaveOk(true);
+    setCapacityMessage(t("saved"));
     setUsers(d);
     setCapacityInputs(Object.fromEntries((d as EquipmentUser[]).map((u) => [u.id, String(u.capacityHours)])));
   }
@@ -118,14 +123,7 @@ export default function EquipmentUserAdmin() {
 
   return (
     <div className="flex flex-col gap-3">
-      <p className="text-sm opacity-70">
-        노광 신청 콤보박스에 뜨는 장비 사용자 목록입니다. 별명은 GDS 파일명 정리에 쓰이므로 영문/숫자/밑줄만
-        가능합니다. 상시 사용자는 항상 노광 큐에 표시되며, 그 외 사용자는 노광 신청에서 선택되었을 때만 큐에
-        나타납니다. 위쪽 &quot;주당 장비 가용 시간&quot;(총 가용 시간)을 바꾸면 상시 사용자들에게 자동으로 균등 재분배되고,
-        그 외에는 아래에서 직접 입력한 값이 그대로 유지됩니다 — 다만 전원의 가용시간 합은 항상 총 가용 시간과
-        같아야 저장됩니다. 로딩 시간(current 전환당)은 사용자별로 독립적으로 관리되며, 가용시간과 달리 합계 제약
-        없이 바로 저장됩니다.
-      </p>
+      <p className="text-sm opacity-70">{t("equipmentUserHint")}</p>
       <div className="flex flex-col gap-2">
         {users.map((u) => (
           <div
@@ -152,7 +150,7 @@ export default function EquipmentUserAdmin() {
                 checked={u.isPermanent}
                 onChange={(e) => updateUser(u.id, { isPermanent: e.target.checked })}
               />
-              상시
+              {t("permanentLabel")}
             </label>
             <span className="flex items-center gap-1 w-28 text-xs">
               <input
@@ -163,7 +161,7 @@ export default function EquipmentUserAdmin() {
                 onChange={(e) => setCapacityInputs((prev) => ({ ...prev, [u.id]: e.target.value }))}
                 className="w-16 rounded-md border border-black/15 dark:border-white/20 bg-transparent px-2 py-1"
               />
-              시간
+              {t("capacityHoursFieldLabel")}
             </span>
             <span className="flex items-center gap-1 w-24 text-xs">
               <input
@@ -177,14 +175,14 @@ export default function EquipmentUserAdmin() {
                 }}
                 className="w-14 rounded-md border border-black/15 dark:border-white/20 bg-transparent px-2 py-1"
               />
-              분(로딩)
+              {t("loadingMinutesFieldLabel")}
             </span>
             <button
               onClick={() => deleteUser(u.id, u.name)}
               disabled={busy}
               className="text-red-500 text-xs disabled:opacity-50 shrink-0 ml-auto"
             >
-              삭제
+              {t("delete")}
             </button>
           </div>
         ))}
@@ -196,42 +194,43 @@ export default function EquipmentUserAdmin() {
           disabled={savingCapacities}
           className="rounded-md bg-blue-600 text-white px-3 py-1.5 text-sm disabled:opacity-50"
         >
-          {savingCapacities ? "저장 중..." : "가용시간 저장"}
+          {savingCapacities ? t("saving") : t("saveCapacitiesLabel")}
         </button>
         {totalCapacityHours != null && (
           <span className={`text-xs ${capacityBalanced ? "opacity-60" : "text-red-500"}`}>
-            현재 합계 {capacitySum.toFixed(2)}시간 / 총 가용 시간 {totalCapacityHours}시간
-            {!capacityBalanced && " — 합이 맞지 않으면 저장이 거부됩니다"}
+            {t("currentSumLabel")} {capacitySum.toFixed(2)} / {t("totalCapacityInline")} {totalCapacityHours}
+            {t("capacityHoursFieldLabel")}
+            {!capacityBalanced && ` — ${t("sumMismatchWarning")}`}
           </span>
         )}
       </div>
       {capacityMessage && (
-        <p className={`text-sm ${capacityMessage === "저장됨" ? "opacity-70" : "text-red-500"}`}>{capacityMessage}</p>
+        <p className={`text-sm ${capacitySaveOk ? "opacity-70" : "text-red-500"}`}>{capacityMessage}</p>
       )}
 
       <div className="rounded-lg border border-dashed border-black/20 dark:border-white/25 p-3 flex items-center gap-2">
         <input
           value={newName}
           onChange={(e) => setNewName(e.target.value)}
-          placeholder="이름 (예: 홍길동)"
+          placeholder={t("equipmentUserNamePlaceholder")}
           className="w-28 rounded-md border border-black/15 dark:border-white/20 bg-transparent px-2 py-1 text-sm"
         />
         <input
           value={newAlias}
           onChange={(e) => setNewAlias(e.target.value)}
-          placeholder="별명 (예: gildong)"
+          placeholder={t("aliasPlaceholder")}
           className="w-28 rounded-md border border-black/15 dark:border-white/20 bg-transparent px-2 py-1 text-sm"
         />
         <label className="flex items-center gap-1 text-xs opacity-80 shrink-0">
           <input type="checkbox" checked={newIsPermanent} onChange={(e) => setNewIsPermanent(e.target.checked)} />
-          상시
+          {t("permanentLabel")}
         </label>
         <button
           onClick={addUser}
           disabled={busy || !newName.trim() || !newAlias.trim()}
           className="rounded-md bg-blue-600 text-white px-3 py-1 text-sm disabled:opacity-50 ml-auto"
         >
-          추가
+          {t("add")}
         </button>
       </div>
       {error && <p className="text-sm text-red-500">{error}</p>}

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { formatWeekLabel } from "@fab-dashboard/scheduling/week-boundary";
+import { useLanguage } from "@/components/LanguageContext";
 
 interface Submission {
   id: number;
@@ -39,10 +40,10 @@ const COLOR_DOT: Record<string, string> = {
   orange: "bg-red-500",
 };
 
-function fmtTime(seconds: number): string {
+function fmtTime(seconds: number, lang: "ko" | "en"): string {
   const m = Math.floor(seconds / 60);
   const s = Math.round(seconds % 60);
-  return `${m}분 ${s}초`;
+  return lang === "ko" ? `${m}분 ${s}초` : `${m}min ${s}sec`;
 }
 
 interface QueueData {
@@ -54,6 +55,7 @@ interface QueueData {
 export default function QueueTable() {
   const [data, setData] = useState<QueueData | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
+  const { lang, t } = useLanguage();
 
   function load() {
     fetch("/api/queue")
@@ -66,19 +68,23 @@ export default function QueueTable() {
   async function onDelete(e: React.MouseEvent, s: Submission) {
     e.preventDefault();
     e.stopPropagation();
-    if (!confirm(`"${s.submittedBy} · ${s.gdsFilename}" 신청을 큐에서 삭제할까요?`)) return;
+    const quoted = `"${s.submittedBy} · ${s.gdsFilename}"`;
+    const confirmMsg = lang === "ko" ? `${quoted} ${t("confirmDeleteQueueEntry")}` : `Delete submission ${quoted} from the queue?`;
+    if (!confirm(confirmMsg)) return;
     setDeletingId(s.id);
     await fetch(`/api/queue/${s.id}`, { method: "DELETE" });
     setDeletingId(null);
     load();
   }
 
-  if (!data) return <p className="opacity-60">불러오는 중...</p>;
+  if (!data) return <p className="opacity-60">{t("loadingEllipsis")}</p>;
 
   return (
     <div>
       <p className="text-sm opacity-60 mb-4">
-        {formatWeekLabel(data.weekId)} 노광 큐 · 총 가용 시간 {Math.round(data.weeklyCapacityHours * 60)}분
+        {formatWeekLabel(data.weekId)} {t("navQueue")} · {t("totalAvailableTimeLabel")}{" "}
+        {Math.round(data.weeklyCapacityHours * 60)}
+        {lang === "ko" ? "분" : " min"}
       </p>
 
       <div className="flex flex-col gap-6">
@@ -92,15 +98,18 @@ export default function QueueTable() {
                 href={`/chip-layout/${section.equipmentUserId}`}
                 className="text-xs rounded-md border border-black/15 dark:border-white/20 px-2 py-0.5 opacity-70 hover:opacity-100"
               >
-                Job 설정
+                {t("jobSettingsLink")}
               </Link>
             </div>
             <p className="text-sm opacity-60 mb-3">
-              가용 시간 {Math.round(section.capacityHours * 60)}분, 칩 로딩 시간 {Math.round(section.totalLoadingMinutes)}분
+              {t("availableTimeLabel")} {Math.round(section.capacityHours * 60)}
+              {lang === "ko" ? "분, " : " min, "}
+              {t("chipLoadingTimeLabel")} {Math.round(section.totalLoadingMinutes)}
+              {lang === "ko" ? "분" : " min"}
             </p>
 
             {section.submissions.length === 0 ? (
-              <p className="text-sm opacity-60">이번 주 신청 내역이 없습니다.</p>
+              <p className="text-sm opacity-60">{t("noSubmissionsThisWeek")}</p>
             ) : (
               <div className="flex flex-col gap-2">
                 {section.submissions.map((s, i) => (
@@ -118,10 +127,11 @@ export default function QueueTable() {
                         {s.submittedBy} · {s.gdsFilename}
                       </p>
                       <p className="text-xs opacity-60">
-                        {s.doseLabel ?? s.resistType} · {s.ebeamCurrentNa}nA · {fmtTime(s.exposureTimeCalculatedS)}
+                        {s.doseLabel ?? s.resistType} · {s.ebeamCurrentNa}nA ·{" "}
+                        {fmtTime(s.exposureTimeCalculatedS, lang)}
                         <span className="opacity-70">
                           {" "}
-                          (범위: {fmtTime(s.exposureTimeMinS)} ~ {fmtTime(s.exposureTimeMaxS)})
+                          ({t("rangeLabel")}: {fmtTime(s.exposureTimeMinS, lang)} ~ {fmtTime(s.exposureTimeMaxS, lang)})
                         </span>
                       </p>
                     </div>
@@ -131,7 +141,7 @@ export default function QueueTable() {
                       disabled={deletingId === s.id}
                       className="text-red-500 text-xs disabled:opacity-50 shrink-0"
                     >
-                      삭제
+                      {t("delete")}
                     </button>
                   </Link>
                 ))}

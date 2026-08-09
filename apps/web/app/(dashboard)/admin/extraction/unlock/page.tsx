@@ -2,6 +2,7 @@
 
 import { useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useLanguage } from "@/components/LanguageContext";
 
 function UnlockForm() {
   const router = useRouter();
@@ -9,6 +10,7 @@ function UnlockForm() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const { t } = useLanguage();
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -21,7 +23,7 @@ function UnlockForm() {
     });
     setLoading(false);
     if (!res.ok) {
-      setError("비밀번호가 올바르지 않습니다.");
+      setError(t("loginError"));
       return;
     }
     router.push(searchParams.get("next") ?? "/admin/extraction/review");
@@ -33,14 +35,14 @@ function UnlockForm() {
       onSubmit={onSubmit}
       className="w-full max-w-sm flex flex-col gap-4 rounded-lg border border-black/10 dark:border-white/15 p-6"
     >
-      <h1 className="text-lg font-semibold">GPT 랩노트 자동추출 (beta)</h1>
-      <p className="text-sm text-amber-500">서버 운영자용 기능입니다. 서버 운영자 비밀번호를 입력해주세요.</p>
+      <h1 className="text-lg font-semibold">{t("extractionMenuLabel")}</h1>
+      <p className="text-sm text-amber-500">{t("operatorUnlockHint")}</p>
       <input
         type="password"
         autoFocus
         value={password}
         onChange={(e) => setPassword(e.target.value)}
-        placeholder="서버 운영자 비밀번호"
+        placeholder={t("operatorPasswordPlaceholder")}
         className="rounded-md border border-black/15 dark:border-white/20 bg-transparent px-3 py-2 outline-none focus:border-blue-500"
       />
       {error && <p className="text-sm text-red-500">{error}</p>}
@@ -49,7 +51,7 @@ function UnlockForm() {
         disabled={loading || !password}
         className="rounded-md bg-blue-600 text-white py-2 disabled:opacity-50"
       >
-        {loading ? "확인 중..." : "확인"}
+        {loading ? t("loginChecking") : t("confirm")}
       </button>
     </form>
   );

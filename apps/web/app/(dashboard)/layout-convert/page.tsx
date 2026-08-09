@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import type { LayerArea } from "@/lib/gds-client";
 import LayoutGridPreview, { type GridBounds } from "@/components/LayoutGridPreview";
+import { useLanguage } from "@/components/LanguageContext";
 
 const MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024;
 
@@ -30,12 +31,13 @@ export default function LayoutConvertPage() {
   const [visibleResultLayers, setVisibleResultLayers] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { t } = useLanguage();
 
   async function onFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
     if (file.size > MAX_FILE_SIZE_BYTES) {
-      alert("파일 용량이 너무 큽니다!");
+      alert(t("fileTooLarge"));
       if (fileInputRef.current) fileInputRef.current.value = "";
       return;
     }
@@ -48,7 +50,7 @@ export default function LayoutConvertPage() {
     setUploading(false);
     if (!res.ok) {
       const d = await res.json().catch(() => ({}));
-      setError(d.error ?? "업로드 실패");
+      setError(d.error ?? t("uploadFailed"));
       return;
     }
     const data = await res.json();
@@ -111,7 +113,7 @@ export default function LayoutConvertPage() {
     setConverting(false);
     if (!res.ok) {
       const d = await res.json().catch(() => ({}));
-      setError(d.error ?? "변환 실패");
+      setError(d.error ?? t("convertFailed"));
       return;
     }
     const data = await res.json();
@@ -129,20 +131,18 @@ export default function LayoutConvertPage() {
 
   return (
     <div className="max-w-2xl">
-      <h1 className="text-xl font-semibold mb-2">레이아웃 타입 변환</h1>
-      <p className="text-sm opacity-70 mb-4">
-        Negative resist용 레이아웃을 Positive layout으로 변환해 줍니다. 파일을 선택하고 옵션을 선택해 주세요.
-      </p>
+      <h1 className="text-xl font-semibold mb-2">{t("navLayoutConvert")}</h1>
+      <p className="text-sm opacity-70 mb-4">{t("layoutConvertDescription")}</p>
 
       <div className="flex flex-col gap-4">
         <div className="flex flex-col gap-1 text-sm">
-          <span>GDS파일(50MB 이하)</span>
+          <span>{t("gdsFileLabel")}</span>
           <div className="flex items-center gap-2">
             <label
               htmlFor="layout-convert-file-input"
               className="cursor-pointer rounded-md bg-blue-600 hover:bg-blue-700 text-white text-sm px-4 py-2 w-fit transition-colors"
             >
-              파일 선택
+              {t("chooseFileLabel")}
             </label>
             <input
               ref={fileInputRef}
@@ -159,16 +159,16 @@ export default function LayoutConvertPage() {
                 onClick={onCancelUpload}
                 className="text-red-500 text-xs border border-red-500/40 rounded px-2 py-1 hover:bg-red-500/10 shrink-0"
               >
-                취소
+                {t("cancel")}
               </button>
             )}
           </div>
         </div>
-        {uploading && <p className="text-sm opacity-60">레이어 분석 중...</p>}
+        {uploading && <p className="text-sm opacity-60">{t("analyzingLayers")}</p>}
 
         {uploadInfo && (
           <div className="rounded-lg border border-black/10 dark:border-white/15 p-4">
-            <p className="text-sm font-medium mb-2">Waveguide layer 선택 (1개 이상 필수) — 선택한 레이어만 isolation gap만큼 buffer 처리되고, 나머지 레이어는 그대로 유지됩니다</p>
+            <p className="text-sm font-medium mb-2">{t("waveguideLayerSelectLabel")}</p>
             <div className="flex flex-col gap-1">
               {uploadInfo.layers.map((l) => {
                 const key = `${l.layer}:${l.datatype}`;
@@ -191,14 +191,14 @@ export default function LayoutConvertPage() {
 
         {uploadInfo && (
           <label className="flex flex-col gap-1 text-sm">
-            <span>Isolation gap (µm) — 필수</span>
+            <span>{t("isolationGapLabel")}</span>
             <input
               type="number"
               min={0}
               step="any"
               value={isolationGap}
               onChange={(e) => setIsolationGap(e.target.value === "" ? "" : Number(e.target.value))}
-              placeholder="예: 5"
+              placeholder={t("exampleValuePlaceholder")}
               className="rounded-md border border-black/15 dark:border-white/20 bg-transparent px-3 py-2"
             />
           </label>
@@ -210,7 +210,7 @@ export default function LayoutConvertPage() {
             disabled={!canConvert}
             className="rounded-md bg-blue-600 text-white py-2 disabled:opacity-50"
           >
-            {converting ? "변환 중..." : "확인"}
+            {converting ? t("converting") : t("confirm")}
           </button>
         )}
 
@@ -219,7 +219,7 @@ export default function LayoutConvertPage() {
         {convertResult && (
           <>
             <div className="rounded-lg border border-black/10 dark:border-white/15 p-4">
-              <p className="text-sm font-medium mb-2">결과 레이어 표시</p>
+              <p className="text-sm font-medium mb-2">{t("resultLayerDisplayLabel")}</p>
               <div className="flex flex-col gap-1">
                 {convertResult.layers.map((l) => {
                   const key = `${l.layer}:${l.datatype}`;
@@ -232,7 +232,8 @@ export default function LayoutConvertPage() {
                       />
                       <span>
                         Layer {l.layer}/{l.datatype}
-                        {selectedLayers.has(key) ? " (변환됨)" : " (유지)"} — {l.area_um2.toLocaleString()} µm²
+                        {selectedLayers.has(key) ? t("convertedSuffix") : t("keptSuffix")} —{" "}
+                        {l.area_um2.toLocaleString()} µm²
                       </span>
                     </label>
                   );
@@ -249,7 +250,7 @@ export default function LayoutConvertPage() {
               download
               className="rounded-md border border-black/15 dark:border-white/20 text-center py-2 text-sm hover:bg-black/5 dark:hover:bg-white/10"
             >
-              변환된 GDS 파일 다운로드
+              {t("downloadConvertedFile")}
             </a>
           </>
         )}

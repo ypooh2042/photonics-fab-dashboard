@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useLanguage } from "@/components/LanguageContext";
 
 interface EbeamCurrent {
   currentNa: number;
@@ -15,6 +16,7 @@ export default function EbeamCurrentAdmin() {
   const [newCurrentNa, setNewCurrentNa] = useState<number | "">("");
   const [newLabel, setNewLabel] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const { t } = useLanguage();
 
   function load() {
     fetch("/api/admin/ebeam-currents")
@@ -47,7 +49,7 @@ export default function EbeamCurrentAdmin() {
   }
 
   async function deleteCurrent(currentNa: number, label: string) {
-    if (!confirm(`"${label}" 항목을 삭제할까요? 노광 신청 콤보박스에서 더 이상 보이지 않게 됩니다.`)) return;
+    if (!confirm(`"${label}" ${t("confirmDeletePreset")}`)) return;
     setBusy(true);
     await fetch(`/api/admin/ebeam-currents/${currentNa}`, { method: "DELETE" });
     setBusy(false);
@@ -66,7 +68,7 @@ export default function EbeamCurrentAdmin() {
     setBusy(false);
     if (!res.ok) {
       const d = await res.json().catch(() => ({}));
-      setError(d.error ?? "추가 실패");
+      setError(d.error ?? t("addFailed"));
       return;
     }
     setNewCurrentNa("");
@@ -76,10 +78,7 @@ export default function EbeamCurrentAdmin() {
 
   return (
     <div className="flex flex-col gap-3">
-      <p className="text-sm opacity-70">
-        노광 신청 페이지의 &quot;E-beam Current&quot; 콤보박스에 뜨는 이름과, 골랐을 때 실제 계산에 쓰이는 current(nA) 값입니다.
-        라디오 버튼으로 표시된 항목이 노광 신청 페이지에서 처음 열었을 때 기본 선택되는 current입니다.
-      </p>
+      <p className="text-sm opacity-70">{t("ebeamCurrentHint")}</p>
       <div className="flex flex-col gap-2">
         {currents.map((c) => (
           <div
@@ -92,7 +91,7 @@ export default function EbeamCurrentAdmin() {
               checked={c.isDefault}
               disabled={busy || c.isDefault}
               onChange={() => setDefaultCurrent(c.currentNa)}
-              title="기본 current로 설정"
+              title={t("setAsDefaultCurrentTitle")}
             />
             <span className="w-20 opacity-60">{c.currentNa}nA</span>
             <input
@@ -107,7 +106,7 @@ export default function EbeamCurrentAdmin() {
               disabled={busy}
               className="text-red-500 text-xs disabled:opacity-50"
             >
-              삭제
+              {t("delete")}
             </button>
           </div>
         ))}
@@ -124,7 +123,7 @@ export default function EbeamCurrentAdmin() {
         <input
           value={newLabel}
           onChange={(e) => setNewLabel(e.target.value)}
-          placeholder="이름 (예: 2nA (KANC 표준))"
+          placeholder={t("ebeamNamePlaceholder")}
           className="flex-1 rounded-md border border-black/15 dark:border-white/20 bg-transparent px-2 py-1 text-sm"
         />
         <button
@@ -132,7 +131,7 @@ export default function EbeamCurrentAdmin() {
           disabled={busy || typeof newCurrentNa !== "number" || !newLabel.trim()}
           className="rounded-md bg-blue-600 text-white px-3 py-1 text-sm disabled:opacity-50"
         >
-          추가
+          {t("add")}
         </button>
       </div>
       {error && <p className="text-sm text-red-500">{error}</p>}

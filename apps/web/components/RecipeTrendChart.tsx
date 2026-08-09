@@ -14,6 +14,7 @@ import {
   ReferenceLine,
 } from "recharts";
 import type { RecipeEntryRow, RecipeEventRow } from "@/lib/data";
+import { useLanguage } from "@/components/LanguageContext";
 
 /**
  * The x-axis is a category axis keyed by row (see the `key` field below), not a
@@ -82,6 +83,7 @@ function makeEventLabelRenderer(
 
 function EtchTrendChart({ entries, events }: { entries: RecipeEntryRow[]; events: RecipeEventRow[] }) {
   const [openEventId, setOpenEventId] = useState<number | null>(null);
+  const { t } = useLanguage();
   const data = useMemo(
     () =>
       entries
@@ -106,7 +108,7 @@ function EtchTrendChart({ entries, events }: { entries: RecipeEntryRow[]; events
   );
 
   if (data.length === 0) {
-    return <p className="text-sm opacity-60">etch rate/selectivity를 계산할 데이터(etch_depth_nm, etch_time_s, selectivity)가 부족합니다.</p>;
+    return <p className="text-sm opacity-60">{t("insufficientEtchData")}</p>;
   }
 
   return (
@@ -240,13 +242,12 @@ export default function RecipeTrendChart({
   categorySlug: string;
   events: RecipeEventRow[];
 }) {
+  const { t } = useLanguage();
   return (
     <div className="rounded-lg border border-black/10 dark:border-white/15 p-4">
-      <h3 className="font-medium text-sm mb-2">기간별 트렌드</h3>
+      <h3 className="font-medium text-sm mb-2">{t("trendHeading")}</h3>
       {categorySlug === "etching" && (
-        <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
-          resist_thickness_nm 가 명시되어 있어야 resist strip 전/후 단차로 selectivity를 계산합니다.
-        </p>
+        <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">{t("etchHintText")}</p>
       )}
       {categorySlug === "etching" ? (
         <EtchTrendChart entries={entries} events={events} />

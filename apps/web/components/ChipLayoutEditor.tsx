@@ -6,6 +6,8 @@ import Link from "next/link";
 import WindowCanvas from "./WindowCanvas";
 import ChipLayoutPreviewModal from "./ChipLayoutPreviewModal";
 import { chipFillColor } from "@/lib/chip-colors";
+import { useLanguage } from "@/components/LanguageContext";
+import type { Lang } from "@/lib/i18n";
 
 type CassetteType = "piece1" | "piece2";
 type WindowKey = "A" | "B" | "D";
@@ -30,11 +32,11 @@ function defaultWindowKey(cassetteType: CassetteType): WindowKey {
   return CASSETTE_WINDOWS[cassetteType][0].key;
 }
 
-function formatHm(totalSeconds: number): string {
+function formatHm(totalSeconds: number, lang: Lang): string {
   const totalMinutes = Math.round(totalSeconds / 60);
   const h = Math.floor(totalMinutes / 60);
   const m = totalMinutes % 60;
-  return `${h}시간 ${m}분`;
+  return lang === "ko" ? `${h}시간 ${m}분` : `${h}h ${m}min`;
 }
 
 interface Job {
@@ -106,6 +108,7 @@ export default function ChipLayoutEditor({
   defaultLoadingCostMinutes,
 }: Props) {
   const router = useRouter();
+  const { lang, t } = useLanguage();
 
   const [jobs, setJobs] = useState<Job[]>([]);
   const [selectedJobId, setSelectedJobId] = useState<number | null>(null);
@@ -218,7 +221,7 @@ export default function ChipLayoutEditor({
       setEditMode(false);
       return;
     }
-    if (window.confirm("장비 사용자 전용 기능입니다. 장비 사용자가 아니라면 수정하지 말아주세요!")) {
+    if (window.confirm(t("confirmEditModeWarning"))) {
       setEditMode(true);
     }
   }
@@ -234,7 +237,7 @@ export default function ChipLayoutEditor({
     setBusy(false);
     const d = await res.json();
     if (!res.ok) {
-      setError(d.error ?? "job 추가 실패");
+      setError(d.error ?? t("jobAddFailed"));
       return;
     }
     loadJobs(d.id);
@@ -248,7 +251,7 @@ export default function ChipLayoutEditor({
       body: JSON.stringify({ name }),
     });
     const d = await res.json();
-    if (!res.ok) setError(d.error ?? "이름 수정 실패");
+    if (!res.ok) setError(d.error ?? t("renameFailed"));
     loadJobs(job.id);
   }
 
@@ -262,7 +265,7 @@ export default function ChipLayoutEditor({
     });
     const d = await res.json();
     if (!res.ok) {
-      setError(d.error ?? "카세트 타입 변경 실패");
+      setError(d.error ?? t("cassetteChangeFailed"));
       return;
     }
     loadJobs(job.id);
@@ -270,7 +273,7 @@ export default function ChipLayoutEditor({
 
   async function deleteJobBtn() {
     if (!job) return;
-    if (!window.confirm(`"${job.name}" job을 삭제할까요? 되돌릴 수 없습니다.`)) return;
+    if (!window.confirm(`"${job.name}" ${t("confirmDeleteJobGeneric")}`)) return;
     await fetch(`/api/chip-layout/jobs/${job.id}`, { method: "DELETE" });
     setSelectedJobId(null);
     loadJobs();
@@ -287,7 +290,7 @@ export default function ChipLayoutEditor({
     });
     const d = await res.json();
     if (!res.ok) {
-      setError(d.error ?? "칩 추가 실패");
+      setError(d.error ?? t("chipAddFailed"));
       return;
     }
     loadChips(job.id);
@@ -302,13 +305,13 @@ export default function ChipLayoutEditor({
       body: JSON.stringify(patch),
     });
     const d = await res.json();
-    if (!res.ok) setError(d.error ?? "칩 수정 실패");
+    if (!res.ok) setError(d.error ?? t("chipUpdateFailed"));
     loadChips(job.id);
   }
 
   async function deleteChipBtn(chipId: number, name: string) {
     if (!job) return;
-    if (!window.confirm(`"${name}" 칩을 삭제할까요?`)) return;
+    if (!window.confirm(`"${name}" ${t("confirmDeleteChipGeneric")}`)) return;
     await fetch(`/api/chip-layout/chips/${chipId}`, { method: "DELETE" });
     loadChips(job.id);
   }
@@ -323,7 +326,7 @@ export default function ChipLayoutEditor({
     });
     const d = await res.json();
     if (!res.ok) {
-      setExposureJobError(d.error ?? "Job 추가 실패");
+      setExposureJobError(d.error ?? t("exposureJobAddFailed"));
       return;
     }
     loadExposureJobs(job.id, d.id);
@@ -339,7 +342,7 @@ export default function ChipLayoutEditor({
       body: JSON.stringify(patch),
     });
     const d = await res.json();
-    if (!res.ok) setExposureJobError(d.error ?? "Job 수정 실패");
+    if (!res.ok) setExposureJobError(d.error ?? t("exposureJobUpdateFailed"));
     loadExposureJobs(job.id);
     loadExposureSummary(job.id);
     if (id === selectedExposureJobId) loadPlacementInstances(id);
@@ -361,7 +364,7 @@ export default function ChipLayoutEditor({
 
   async function deleteExposureJobBtn(id: number, name: string) {
     if (!job) return;
-    if (!window.confirm(`"${name}" Job을 삭제할까요? 배치된 패턴도 함께 삭제됩니다.`)) return;
+    if (!window.confirm(`"${name}" ${t("confirmDeleteExposureJobGeneric")}`)) return;
     setExposureJobError(null);
     await fetch(`/api/chip-layout/exposure-jobs/${id}`, { method: "DELETE" });
     if (selectedExposureJobId === id) setSelectedExposureJobId(null);
@@ -380,7 +383,7 @@ export default function ChipLayoutEditor({
     });
     if (!res.ok) {
       const d = await res.json();
-      setError(d.error ?? "슬롯 변경 실패");
+      setError(d.error ?? t("slotChangeFailed"));
     }
     loadPatternCandidates(job.id);
     if (selectedExposureJobId) loadPlacementInstances(selectedExposureJobId);
@@ -396,7 +399,7 @@ export default function ChipLayoutEditor({
     });
     const d = await res.json();
     if (!res.ok) {
-      setError(d.error ?? "배치 실패");
+      setError(d.error ?? t("placementFailed"));
       return;
     }
     loadPlacementInstances(selectedExposureJobId);
@@ -412,7 +415,7 @@ export default function ChipLayoutEditor({
       body: JSON.stringify(patch),
     });
     const d = await res.json();
-    if (!res.ok) setError(d.error ?? "배치 수정 실패");
+    if (!res.ok) setError(d.error ?? t("placementUpdateFailed"));
     loadPlacementInstances(selectedExposureJobId);
     loadExposureSummary(job.id);
   }
@@ -434,7 +437,7 @@ export default function ChipLayoutEditor({
     });
     const d = await res.json();
     if (res.ok) setThisWeekLoading(d.loadingCostMinutes);
-    else setError(d.error ?? "로딩 시간 수정 실패");
+    else setError(d.error ?? t("loadingTimeUpdateFailed"));
   }
 
   async function onPreview() {
@@ -445,7 +448,7 @@ export default function ChipLayoutEditor({
     setBusy(false);
     if (!res.ok) {
       const d = await res.json();
-      setError(d.error ?? "미리보기 생성 실패");
+      setError(d.error ?? t("previewGenerationFailed"));
       return;
     }
     // Editing is an in-progress, stateful session (selected batch/Job, unsaved-focus fields) —
@@ -465,11 +468,11 @@ export default function ChipLayoutEditor({
   return (
     <div className="max-w-6xl">
       <Link href="/queue" className="text-sm opacity-60 hover:opacity-100">
-        ← 노광 큐
+        ← {t("navQueue")}
       </Link>
       <div className="flex items-center justify-between mt-2 mb-4">
         <h1 className="text-xl font-semibold">
-          {equipmentUserName} ({equipmentUserAlias}) · e-beam Job 설정
+          {equipmentUserName} ({equipmentUserAlias}) · {t("ebeamJobSettingsHeading")}
         </h1>
         <div className="flex items-center gap-2">
           <button
@@ -477,7 +480,7 @@ export default function ChipLayoutEditor({
             disabled={!editMode}
             className="rounded-md border border-black/15 dark:border-white/20 px-3 py-1.5 text-sm disabled:opacity-50"
           >
-            로딩 시간 설정
+            {t("loadingTimeSettingsLabel")}
           </button>
           <button
             onClick={onToggleEdit}
@@ -485,7 +488,7 @@ export default function ChipLayoutEditor({
               editMode ? "border border-black/15 dark:border-white/20" : "bg-blue-600 text-white"
             }`}
           >
-            {editMode ? "보기 모드로" : "수정"}
+            {editMode ? t("viewModeLabel") : t("edit")}
           </button>
         </div>
       </div>
@@ -525,21 +528,27 @@ export default function ChipLayoutEditor({
           disabled={!editMode || busy}
           className="rounded-md border border-black/15 dark:border-white/20 px-2 py-1 text-sm disabled:opacity-50"
         >
-          새 Batch 추가
+          {t("addNewBatchLabel")}
         </button>
         <button
           onClick={deleteJobBtn}
           disabled={!editMode || !job}
           className="rounded-md border border-red-500 text-red-500 px-2 py-1 text-sm disabled:opacity-50 ml-auto"
         >
-          Batch 삭제
+          {t("deleteBatchLabel")}
         </button>
       </div>
 
       {job && exposureSummary && (
         <p className="text-sm opacity-70 mb-4">
-          {job.name} 총 예상 노광 시간: {formatHm(exposureSummary.calculatedSeconds)} (범위: {formatHm(exposureSummary.minSeconds)} ~{" "}
-          {formatHm(exposureSummary.maxSeconds)}){thisWeekLoading != null && <> + 로딩 시간 {formatHm(thisWeekLoading * 60)}</>}
+          {job.name} {t("totalEstimatedExposureLabel")}: {formatHm(exposureSummary.calculatedSeconds, lang)} (
+          {t("rangeLabel")}: {formatHm(exposureSummary.minSeconds, lang)} ~ {formatHm(exposureSummary.maxSeconds, lang)})
+          {thisWeekLoading != null && (
+            <>
+              {" "}
+              + {t("loadingTimeLabel")} {formatHm(thisWeekLoading * 60, lang)}
+            </>
+          )}
         </p>
       )}
 
@@ -550,7 +559,7 @@ export default function ChipLayoutEditor({
             {/* Left column: chip management + exposure job management */}
             <div className="flex flex-col gap-4 min-w-0">
               <div className="rounded-lg border border-black/10 dark:border-white/15 p-3 min-w-0">
-                <p className="text-sm font-semibold mb-2">칩 추가/삭제</p>
+                <p className="text-sm font-semibold mb-2">{t("addDeleteChipLabel")}</p>
                 <div className="flex items-center gap-2 mb-2">
                   <input
                     type="number"
@@ -561,13 +570,13 @@ export default function ChipLayoutEditor({
                     onChange={(e) => setNewChipWidthMm(e.target.value)}
                     className="w-20 rounded-md border border-black/15 dark:border-white/20 bg-transparent px-2 py-1 text-sm disabled:opacity-50"
                   />
-                  <span className="text-xs opacity-60">mm 가로</span>
+                  <span className="text-xs opacity-60">{t("mmWidthSuffix")}</span>
                   <button
                     onClick={addChip}
                     disabled={!editMode}
                     className="rounded-md bg-blue-600 text-white px-2 py-1 text-sm disabled:opacity-50"
                   >
-                    칩 추가 (현재 window: {selectedWindowKey})
+                    {t("addChipButtonLabel")} ({t("currentWindowInline")}: {selectedWindowKey})
                   </button>
                 </div>
                 <div className="overflow-x-auto">
@@ -575,9 +584,9 @@ export default function ChipLayoutEditor({
                     {chips.length > 0 && (
                       <div className="grid grid-cols-[14px_4rem_3.5rem_3.5rem_5rem_2.5rem] gap-1 text-[10px] opacity-50 mb-0.5">
                         <span />
-                        <span className="text-center">이름</span>
+                        <span className="text-center">{t("nameLabel")}</span>
                         <span className="text-center">window</span>
-                        <span className="text-center">가로(mm)</span>
+                        <span className="text-center">{t("widthMmColumnLabel")}</span>
                         <span className="text-center">center_x (µm)</span>
                         <span />
                       </div>
@@ -618,7 +627,7 @@ export default function ChipLayoutEditor({
                               if (widthUm !== c.widthUm && widthUm > 0) updateChipField(c.id, { widthUm });
                             }}
                             className="w-full rounded-md border border-black/15 dark:border-white/20 bg-transparent px-1 py-0.5 disabled:opacity-50"
-                            title="가로 길이 (mm)"
+                            title={t("widthLengthTitle")}
                           />
                           <input
                             type="number"
@@ -633,25 +642,25 @@ export default function ChipLayoutEditor({
                             disabled={!editMode}
                             className="text-red-500 disabled:opacity-50 justify-self-end"
                           >
-                            삭제
+                            {t("delete")}
                           </button>
                         </div>
                       ))}
-                      {chips.length === 0 && <p className="text-xs opacity-50">칩이 없습니다.</p>}
+                      {chips.length === 0 && <p className="text-xs opacity-50">{t("noChipsLabel")}</p>}
                     </div>
                   </div>
                 </div>
               </div>
 
               <div className="rounded-lg border border-black/10 dark:border-white/15 p-3 min-w-0">
-                <p className="text-sm font-semibold mb-2">Job 추가/삭제</p>
+                <p className="text-sm font-semibold mb-2">{t("addDeleteJobLabel")}</p>
                 <div className="mb-2">
                   <button
                     onClick={addExposureJob}
                     disabled={!editMode}
                     className="rounded-md bg-blue-600 text-white px-2 py-1 text-sm disabled:opacity-50"
                   >
-                    Job 추가
+                    {t("addJobButtonLabel")}
                   </button>
                 </div>
                 <div className="overflow-x-auto">
@@ -659,7 +668,7 @@ export default function ChipLayoutEditor({
                     {exposureJobs.length > 0 && (
                       <div className="grid grid-cols-[1.25rem_3rem_4rem_4.5rem_3.5rem_3rem_2.5rem] gap-1 text-[10px] opacity-50 mb-0.5">
                         <span />
-                        <span className="text-center">이름</span>
+                        <span className="text-center">{t("nameLabel")}</span>
                         <span className="text-center">current(nA)</span>
                         <span className="text-center">dose(µC/cm²)</span>
                         <span className="text-center">scan step</span>
@@ -726,11 +735,11 @@ export default function ChipLayoutEditor({
                             disabled={!editMode}
                             className="text-red-500 disabled:opacity-50 justify-self-end"
                           >
-                            삭제
+                            {t("delete")}
                           </button>
                         </div>
                       ))}
-                      {exposureJobs.length === 0 && <p className="text-xs opacity-50">Job이 없습니다.</p>}
+                      {exposureJobs.length === 0 && <p className="text-xs opacity-50">{t("noJobsLabel")}</p>}
                     </div>
                   </div>
                 </div>
@@ -740,14 +749,14 @@ export default function ChipLayoutEditor({
               {/* Pattern list | Pattern placement — shares the left column's width with chip/Job management above */}
               <div className="grid grid-cols-1 sm:grid-cols-[1fr_1fr] gap-4 min-w-0">
                 <div className="rounded-lg border border-black/10 dark:border-white/15 p-3 min-w-0">
-                  <p className="text-sm font-semibold mb-2">패턴 목록</p>
-                  <p className="text-xs opacity-60 mb-2">노광 큐에서 불러온 패턴 목록입니다. &quot;배치&quot;를 누르면 Job에 배치가 추가됩니다.</p>
+                  <p className="text-sm font-semibold mb-2">{t("patternListLabel")}</p>
+                  <p className="text-xs opacity-60 mb-2">{t("patternListHint")}</p>
                   <div className="overflow-x-auto">
                     <div className="min-w-max">
                       {patternCandidates.length > 0 && (
                         <div className="grid grid-cols-[9rem_3rem_2.75rem] gap-1 text-[10px] opacity-50 mb-0.5">
-                          <span className="text-center">패턴 이름</span>
-                          <span className="text-center">슬롯</span>
+                          <span className="text-center">{t("patternNameColumnLabel")}</span>
+                          <span className="text-center">{t("slotColumnLabel")}</span>
                           <span />
                         </div>
                       )}
@@ -772,23 +781,25 @@ export default function ChipLayoutEditor({
                               disabled={!editMode || !selectedExposureJobId}
                               className="rounded-md border border-black/15 dark:border-white/20 px-0.5 py-0.5 text-[10px] whitespace-nowrap disabled:opacity-50"
                             >
-                              배치
+                              {t("placeButtonLabel")}
                             </button>
                           </div>
                         ))}
-                        {patternCandidates.length === 0 && <p className="text-xs opacity-50">이번 주 노광할 패턴이 없습니다.</p>}
+                        {patternCandidates.length === 0 && <p className="text-xs opacity-50">{t("noPatternsThisWeekLabel")}</p>}
                       </div>
                     </div>
                   </div>
                 </div>
 
                 <div className="rounded-lg border border-black/10 dark:border-white/15 p-3 min-w-0">
-                  <p className="text-sm font-semibold mb-2">패턴 배치 · {selectedExposureJob?.name ?? "-"}</p>
+                  <p className="text-sm font-semibold mb-2">
+                    {t("patternPlacementLabel")} · {selectedExposureJob?.name ?? "-"}
+                  </p>
                   <div className="overflow-x-auto">
                     <div className="min-w-max">
                       {placementInstances.length > 0 && (
                         <div className="grid grid-cols-[1.25rem_5rem_5rem_2.5rem] gap-1 text-[10px] opacity-50 mb-0.5">
-                          <span className="text-center">슬롯</span>
+                          <span className="text-center">{t("slotColumnLabel")}</span>
                           <span className="text-center">center_x (µm)</span>
                           <span className="text-center">center_y (µm)</span>
                           <span />
@@ -821,11 +832,11 @@ export default function ChipLayoutEditor({
                               disabled={!editMode}
                               className="text-red-500 disabled:opacity-50 justify-self-end"
                             >
-                              삭제
+                              {t("delete")}
                             </button>
                           </div>
                         ))}
-                        {placementInstances.length === 0 && <p className="text-xs opacity-50">배치된 패턴이 없습니다.</p>}
+                        {placementInstances.length === 0 && <p className="text-xs opacity-50">{t("noPlacedPatternsLabel")}</p>}
                       </div>
                     </div>
                   </div>
@@ -883,8 +894,8 @@ export default function ChipLayoutEditor({
                   </p>
                 )}
                 <p className="text-xs opacity-50 mt-1">
-                  이 창에는 선택된 Job &quot;{selectedExposureJob?.name ?? "-"}&quot;의 배치만 표시됩니다. 전체 패턴 뷰는 모든
-                  Job의 배치를 함께 보여줍니다.
+                  {t("windowOnlyShowsHintPrefix")} &quot;{selectedExposureJob?.name ?? "-"}&quot;
+                  {t("windowOnlyShowsHintSuffix")}
                 </p>
 
                 <button
@@ -892,7 +903,7 @@ export default function ChipLayoutEditor({
                   disabled={busy}
                   className="mt-3 rounded-md bg-blue-600 text-white px-3 py-1.5 text-sm disabled:opacity-50"
                 >
-                  {editMode ? "전체 패턴 뷰" : "전체 패턴 뷰 & 파라미터 요약"}
+                  {editMode ? t("fullPatternViewLabel") : t("fullPatternViewSummaryLabel")}
                 </button>
               </div>
             </div>
@@ -918,11 +929,10 @@ export default function ChipLayoutEditor({
             className="bg-white dark:bg-neutral-900 rounded-lg p-4 max-w-sm w-full border border-black/10 dark:border-white/15"
             onClick={(e) => e.stopPropagation()}
           >
-            <h2 className="text-base font-semibold mb-2">로딩 시간 설정</h2>
+            <h2 className="text-base font-semibold mb-2">{t("loadingTimeSettingsLabel")}</h2>
             <p className="text-sm opacity-70 mb-3">
-              로딩 횟수와 calibration 시간 등을 고려하여 이번 주 노광의 적절한 로딩 시간을 입력해 주세요. 기본적으로
-              설정된 로딩 시간은 {defaultLoadingCostMinutes}분 입니다. 이 로딩 시간은 노광 큐에 반영되어 레이아웃
-              의뢰자들이 알 수 있게 됩니다.
+              {t("loadingTimeModalHintPrefix")} {defaultLoadingCostMinutes}
+              {t("loadingTimeModalHintSuffix")}
             </p>
             <div className="flex items-center gap-2 mb-4">
               <input
@@ -933,13 +943,13 @@ export default function ChipLayoutEditor({
                 onBlur={(e) => onLoadingBlur(Number(e.target.value))}
                 className="w-24 rounded-md border border-black/15 dark:border-white/20 bg-transparent px-2 py-1 text-sm"
               />
-              <span className="text-xs opacity-60">분</span>
+              <span className="text-xs opacity-60">{t("minutesUnit")}</span>
             </div>
             <button
               onClick={() => setShowLoadingModal(false)}
               className="w-full rounded-md border border-black/15 dark:border-white/20 px-3 py-1.5 text-sm"
             >
-              닫기
+              {t("close")}
             </button>
           </div>
         </div>

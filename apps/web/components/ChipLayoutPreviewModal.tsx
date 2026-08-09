@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import LayoutGridPreview from "./LayoutGridPreview";
+import { useLanguage } from "@/components/LanguageContext";
 
 type WindowKey = "A" | "B" | "D";
 
@@ -18,6 +19,7 @@ export default function ChipLayoutPreviewModal({ jobId, jobName, windowOptions, 
   const [windowKey, setWindowKey] = useState<WindowKey>(initialWindowKey);
   const [svg, setSvg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const { t } = useLanguage();
 
   useEffect(() => {
     setSvg(null);
@@ -26,12 +28,12 @@ export default function ChipLayoutPreviewModal({ jobId, jobName, windowOptions, 
       .then(async (r) => {
         const d = await r.json();
         if (!r.ok) {
-          setError(d.error ?? "불러오기 실패");
+          setError(d.error ?? t("loadFailed"));
           return;
         }
         setSvg(d.svg);
       })
-      .catch(() => setError("불러오기 실패"));
+      .catch(() => setError(t("loadFailed")));
   }, [jobId, windowKey]);
 
   useEffect(() => {
@@ -49,7 +51,9 @@ export default function ChipLayoutPreviewModal({ jobId, jobName, windowOptions, 
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between mb-3">
-          <h2 className="text-lg font-semibold">{jobName} · 전체 패턴 뷰</h2>
+          <h2 className="text-lg font-semibold">
+            {jobName} · {t("fullPatternViewLabel")}
+          </h2>
           <div className="flex items-center gap-2">
             <label className="flex items-center gap-1 text-sm">
               Window
@@ -69,7 +73,7 @@ export default function ChipLayoutPreviewModal({ jobId, jobName, windowOptions, 
               onClick={onClose}
               className="rounded-md border border-black/15 dark:border-white/20 px-2 py-1 text-sm"
             >
-              닫기
+              {t("close")}
             </button>
           </div>
         </div>

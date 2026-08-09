@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import LayoutGridPreview from "./LayoutGridPreview";
+import { useLanguage } from "@/components/LanguageContext";
 
 type CassetteType = "piece1" | "piece2";
 type WindowKey = "A" | "B" | "D";
@@ -59,6 +60,7 @@ export default function ChipLayoutPreviewViewer({ equipmentUserId, jobId, jobNam
   const [candidates, setCandidates] = useState<PatternCandidate[]>([]);
   const [exposureJobs, setExposureJobs] = useState<ExposureJob[]>([]);
   const [placementsByJob, setPlacementsByJob] = useState<Record<number, PlacementInstance[]>>({});
+  const { t } = useLanguage();
 
   useEffect(() => {
     setSvg(null);
@@ -67,12 +69,12 @@ export default function ChipLayoutPreviewViewer({ equipmentUserId, jobId, jobNam
       .then(async (r) => {
         const d = await r.json();
         if (!r.ok) {
-          setError(d.error ?? "불러오기 실패");
+          setError(d.error ?? t("loadFailed"));
           return;
         }
         setSvg(d.svg);
       })
-      .catch(() => setError("불러오기 실패"));
+      .catch(() => setError(t("loadFailed")));
   }, [jobId, windowKey]);
 
   useEffect(() => {
@@ -101,10 +103,12 @@ export default function ChipLayoutPreviewViewer({ equipmentUserId, jobId, jobNam
   return (
     <div className="max-w-3xl">
       <Link href={`/chip-layout/${equipmentUserId}`} className="text-sm opacity-60 hover:opacity-100">
-        ← 뒤로가기
+        ← {t("backLabel")}
       </Link>
       <div className="flex items-center justify-between mt-2 mb-4">
-        <h1 className="text-xl font-semibold">{jobName} · 전체 패턴 뷰</h1>
+        <h1 className="text-xl font-semibold">
+          {jobName} · {t("fullPatternViewLabel")}
+        </h1>
         <label className="flex items-center gap-1 text-sm">
           Window
           <select
@@ -125,20 +129,20 @@ export default function ChipLayoutPreviewViewer({ equipmentUserId, jobId, jobNam
       {svg && <LayoutGridPreview svg={svg} visibleLayerKeys={new Set()} gridBounds={null} showFieldGrid={false} />}
 
       <div className="mt-8">
-        <h2 className="text-lg font-semibold mb-3">파라미터 요약</h2>
+        <h2 className="text-lg font-semibold mb-3">{t("parameterSummaryLabel")}</h2>
 
         <p className="text-sm opacity-80 mb-4">
           cassette <span className="font-medium">{cassetteType}</span>
         </p>
 
         <div className="rounded-lg border border-black/10 dark:border-white/15 p-3 mb-4">
-          <p className="text-sm font-semibold mb-2">슬롯 사전</p>
+          <p className="text-sm font-semibold mb-2">{t("slotDictionaryLabel")}</p>
           <table className="w-full text-sm table-fixed">
             <thead>
               <tr className="text-left opacity-60 text-xs">
-                <th className="pb-1 w-10">슬롯</th>
-                <th className="pb-1">패턴 이름</th>
-                <th className="pb-1 w-28 text-right">크기 (µm)</th>
+                <th className="pb-1 w-10">{t("slotColumnLabel")}</th>
+                <th className="pb-1">{t("patternNameColumnLabel")}</th>
+                <th className="pb-1 w-28 text-right">{t("sizeUmColumnLabel")}</th>
               </tr>
             </thead>
             <tbody>
@@ -154,7 +158,7 @@ export default function ChipLayoutPreviewViewer({ equipmentUserId, jobId, jobNam
               {sortedCandidates.length === 0 && (
                 <tr>
                   <td colSpan={3} className="py-2 text-xs opacity-50">
-                    배치된 패턴이 없습니다.
+                    {t("noPlacedPatternsLabel")}
                   </td>
                 </tr>
               )}
@@ -177,8 +181,8 @@ export default function ChipLayoutPreviewViewer({ equipmentUserId, jobId, jobNam
                 <table className="w-full text-sm table-fixed">
                   <thead>
                     <tr className="text-left opacity-60 text-xs">
-                      <th className="pb-1 w-10">슬롯</th>
-                      <th className="pb-1">패턴 이름</th>
+                      <th className="pb-1 w-10">{t("slotColumnLabel")}</th>
+                      <th className="pb-1">{t("patternNameColumnLabel")}</th>
                       <th className="pb-1 w-24 text-right">center_x (µm)</th>
                       <th className="pb-1 w-24 text-right">center_y (µm)</th>
                     </tr>
@@ -195,7 +199,7 @@ export default function ChipLayoutPreviewViewer({ equipmentUserId, jobId, jobNam
                     {placements.length === 0 && (
                       <tr>
                         <td colSpan={4} className="py-2 text-xs opacity-50">
-                          배치된 패턴이 없습니다.
+                          {t("noPlacedPatternsLabel")}
                         </td>
                       </tr>
                     )}
@@ -204,7 +208,7 @@ export default function ChipLayoutPreviewViewer({ equipmentUserId, jobId, jobNam
               </div>
             );
           })}
-          {exposureJobs.length === 0 && <p className="text-sm opacity-50">Job이 없습니다.</p>}
+          {exposureJobs.length === 0 && <p className="text-sm opacity-50">{t("noJobsLabel")}</p>}
         </div>
       </div>
     </div>

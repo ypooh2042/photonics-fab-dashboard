@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { listRecipesInCategory, listRecipeCategories } from "@/lib/data";
 import { notFound } from "next/navigation";
+import { getServerLang } from "@/lib/i18n-server";
+import { translate } from "@/lib/i18n";
 
 export default async function RecipeListPage({
   params,
@@ -11,20 +13,22 @@ export default async function RecipeListPage({
   const categoryInfo = listRecipeCategories().find((c) => c.slug === category);
   if (!categoryInfo) notFound();
   const recipes = listRecipesInCategory(category);
+  const lang = await getServerLang();
+  const t = (key: Parameters<typeof translate>[0]) => translate(key, lang);
 
   return (
     <div>
       <div className="flex items-center justify-between">
         <Link href="/recipes" className="text-sm opacity-60 hover:opacity-100">
-          ← 카테고리 목록
+          ← {t("categoryListBack")}
         </Link>
         <Link href={`/admin/recipes/${category}`} className="text-sm opacity-60 hover:opacity-100">
-          관리자 수정
+          {t("adminEditLink")}
         </Link>
       </div>
       <h1 className="text-xl font-semibold mt-2 mb-4">{categoryInfo.name}</h1>
       {recipes.length === 0 ? (
-        <p className="opacity-60">아직 기록된 레시피가 없습니다.</p>
+        <p className="opacity-60">{t("noRecipesYet")}</p>
       ) : (
         <div className="flex flex-col gap-2">
           {recipes.map((r) => (
@@ -35,7 +39,9 @@ export default async function RecipeListPage({
             >
               <span className="font-medium">{r.recipeName}</span>
               <span className="text-xs opacity-60">
-                기록 {r.entryCount}건 · 최근 {r.lastEntryDate}
+                {lang === "ko"
+                  ? `${t("entriesLabel")} ${r.entryCount}건 · ${t("recentLabel")} ${r.lastEntryDate}`
+                  : `${r.entryCount} ${t("entriesLabel")} · ${t("recentLabel")} ${r.lastEntryDate}`}
               </span>
             </Link>
           ))}

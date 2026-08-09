@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useLanguage } from "@/components/LanguageContext";
 
 interface ResistDose {
   resistType: string;
@@ -16,6 +17,7 @@ export default function ResistDoseAdmin() {
   const [newName, setNewName] = useState("");
   const [newDose, setNewDose] = useState<number | "">("");
   const [error, setError] = useState<string | null>(null);
+  const { t } = useLanguage();
 
   function load() {
     fetch("/api/admin/resist-doses")
@@ -47,7 +49,7 @@ export default function ResistDoseAdmin() {
     setBusy(false);
     if (!res.ok) {
       const d = await res.json().catch(() => ({}));
-      setError(d.error ?? "이름 수정 실패");
+      setError(d.error ?? t("renameFailed"));
     }
     load();
   }
@@ -64,7 +66,7 @@ export default function ResistDoseAdmin() {
   }
 
   async function deleteDose(resistType: string) {
-    if (!confirm(`"${resistType}" 항목을 삭제할까요? 노광 신청 콤보박스에서 더 이상 보이지 않게 됩니다.`)) return;
+    if (!confirm(`"${resistType}" ${t("confirmDeletePreset")}`)) return;
     setBusy(true);
     await fetch(`/api/admin/resist-doses/${encodeURIComponent(resistType)}`, { method: "DELETE" });
     setBusy(false);
@@ -83,7 +85,7 @@ export default function ResistDoseAdmin() {
     setBusy(false);
     if (!res.ok) {
       const d = await res.json().catch(() => ({}));
-      setError(d.error ?? "추가 실패");
+      setError(d.error ?? t("addFailed"));
       return;
     }
     setNewName("");
@@ -93,10 +95,7 @@ export default function ResistDoseAdmin() {
 
   return (
     <div className="flex flex-col gap-3">
-      <p className="text-sm opacity-70">
-        노광 신청 페이지의 &quot;레지스트&quot; 콤보박스에 뜨는 이름과, 골랐을 때 기본값으로 표시되는 dose 값입니다. 라디오
-        버튼으로 표시된 항목이 노광 신청 페이지에서 처음 열었을 때 기본 선택되는 레지스트입니다.
-      </p>
+      <p className="text-sm opacity-70">{t("resistDoseHint")}</p>
       <div className="flex flex-col gap-2">
         {doses.map((d) => (
           <div
@@ -109,7 +108,7 @@ export default function ResistDoseAdmin() {
               checked={d.isDefault}
               disabled={busy || d.isDefault}
               onChange={() => setDefaultDose(d.resistType)}
-              title="기본 레지스트로 설정"
+              title={t("setAsDefaultResistTitle")}
             />
             <input
               defaultValue={d.resistType}
@@ -130,7 +129,7 @@ export default function ResistDoseAdmin() {
             />
             <span className="opacity-60">µC/cm²</span>
             <button onClick={() => deleteDose(d.resistType)} disabled={busy} className="text-red-500 text-xs disabled:opacity-50">
-              삭제
+              {t("delete")}
             </button>
           </div>
         ))}
@@ -140,7 +139,7 @@ export default function ResistDoseAdmin() {
         <input
           value={newName}
           onChange={(e) => setNewName(e.target.value)}
-          placeholder="이름 (예: ZEP520A)"
+          placeholder={t("resistNamePlaceholder")}
           className="flex-1 rounded-md border border-black/15 dark:border-white/20 bg-transparent px-2 py-1 text-sm"
         />
         <input
@@ -155,7 +154,7 @@ export default function ResistDoseAdmin() {
           disabled={busy || !newName.trim() || typeof newDose !== "number"}
           className="rounded-md bg-blue-600 text-white px-3 py-1 text-sm disabled:opacity-50"
         >
-          추가
+          {t("add")}
         </button>
       </div>
       {error && <p className="text-sm text-red-500">{error}</p>}

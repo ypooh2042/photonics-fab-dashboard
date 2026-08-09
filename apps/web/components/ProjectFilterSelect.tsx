@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter, usePathname } from "next/navigation";
+import { useLanguage } from "@/components/LanguageContext";
 
 export default function ProjectFilterSelect({
   projects,
@@ -11,6 +12,7 @@ export default function ProjectFilterSelect({
 }) {
   const router = useRouter();
   const pathname = usePathname();
+  const { t } = useLanguage();
 
   return (
     <select
@@ -21,7 +23,7 @@ export default function ProjectFilterSelect({
       }}
       className="text-sm rounded-md border border-black/15 dark:border-white/20 bg-transparent px-3 py-2 max-w-[12rem] truncate"
     >
-      <option value="">전체 프로젝트</option>
+      <option value="">{t("allProjects")}</option>
       {projects.map((p) => (
         <option key={p.slug} value={p.slug}>
           {p.name}

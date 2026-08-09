@@ -7,6 +7,7 @@ import autoAnimate from "@formkit/auto-animate";
 import { displayFilename } from "@/lib/photo-display";
 import type { ChipRunDetail } from "@/lib/data";
 import { STAGE_TYPES, STAGE_STATUSES } from "@/lib/stage-constants";
+import { useLanguage } from "@/components/LanguageContext";
 
 interface OtherChipRun {
   id: number;
@@ -45,6 +46,7 @@ export default function ChipRunAdminEditor({ chipRun }: { chipRun: ChipRunDetail
   const [openMenuStageId, setOpenMenuStageId] = useState<number | null>(null);
   const [moveModalStageId, setMoveModalStageId] = useState<number | null>(null);
   const [moveModalTarget, setMoveModalTarget] = useState<number | "">("");
+  const { lang, t } = useLanguage();
   const [stagesListRef] = useAutoAnimate<HTMLDivElement>();
   // Stable identity across re-renders (unlike an inline arrow function) so autoAnimate
   // initializes once per photos-list DOM node instead of re-running on every re-render —
@@ -107,7 +109,7 @@ export default function ChipRunAdminEditor({ chipRun }: { chipRun: ChipRunDetail
   }
 
   async function deleteStage(id: number) {
-    if (!confirm("삭제 후 되돌릴 수 없습니다, 삭제하시겠습니까?")) return;
+    if (!confirm(t("confirmDeleteStage"))) return;
     setBusy(true);
     await fetch(`/api/admin/stages/${id}`, { method: "DELETE" });
     setBusy(false);
@@ -157,7 +159,7 @@ export default function ChipRunAdminEditor({ chipRun }: { chipRun: ChipRunDetail
     setUploadingStageId(null);
     if (!res.ok) {
       const d = await res.json().catch(() => ({}));
-      alert(d.error ?? "사진 업로드에 실패했습니다.");
+      alert(d.error ?? t("photoUploadFailed"));
       return;
     }
     router.refresh();
@@ -211,7 +213,9 @@ export default function ChipRunAdminEditor({ chipRun }: { chipRun: ChipRunDetail
     if (!mergeTargetId) return;
     const targetLabel = otherRuns.find((r) => r.id === mergeTargetId)?.label ?? "";
     const warned = confirm(
-      `"${chipRun.label}"의 모든 스테이지를 "${targetLabel}"로 옮기고, "${chipRun.label}"은 삭제됩니다. 되돌릴 수 없습니다. 계속할까요?`,
+      lang === "ko"
+        ? `"${chipRun.label}"의 모든 스테이지를 "${targetLabel}"로 옮기고, "${chipRun.label}"은 삭제됩니다. 되돌릴 수 없습니다. 계속할까요?`
+        : `All stages of "${chipRun.label}" will be moved to "${targetLabel}", and "${chipRun.label}" will be deleted. This cannot be undone. Continue?`,
     );
     if (!warned) return;
     setBusy(true);
@@ -310,7 +314,7 @@ export default function ChipRunAdminEditor({ chipRun }: { chipRun: ChipRunDetail
   return (
     <div className="flex flex-col gap-4">
       <label className="flex flex-col gap-1 text-sm">
-        <span className="opacity-60">Run 이름</span>
+        <span className="opacity-60">{t("runNameLabel")}</span>
         <div className="flex items-center gap-2">
           <input
             value={labelInput}
@@ -326,14 +330,14 @@ export default function ChipRunAdminEditor({ chipRun }: { chipRun: ChipRunDetail
             disabled={busy || !labelInput.trim() || labelInput === chipRun.label}
             className="text-xs rounded-md border border-black/15 dark:border-white/20 px-3 py-2 disabled:opacity-50"
           >
-            저장
+            {t("save")}
           </button>
-          {labelSaved && <span className="text-xs text-green-500">저장됨</span>}
+          {labelSaved && <span className="text-xs text-green-500">{t("saved")}</span>}
         </div>
       </label>
 
       <label className="flex flex-col gap-1 text-sm">
-        <span className="opacity-60">소속 프로젝트</span>
+        <span className="opacity-60">{t("belongsToProjectLabel")}</span>
         <div className="flex items-center gap-2">
           <select
             value={projects.find((p) => p.slug === chipRun.projectSlug)?.id ?? ""}
@@ -347,15 +351,17 @@ export default function ChipRunAdminEditor({ chipRun }: { chipRun: ChipRunDetail
               </option>
             ))}
           </select>
-          {projectSaved && <span className="text-xs text-green-500">저장됨</span>}
+          {projectSaved && <span className="text-xs text-green-500">{t("saved")}</span>}
         </div>
       </label>
 
       {chipRun.needsReview && (
         <div className="flex items-center justify-between rounded-md border border-amber-500 px-3 py-2 text-sm">
-          <span>검수 필요 (confidence {chipRun.llmConfidence?.toFixed(2)})</span>
+          <span>
+            {t("needsReviewConfidencePrefix")} (confidence {chipRun.llmConfidence?.toFixed(2)})
+          </span>
           <button onClick={clearReview} disabled={busy} className="underline">
-            검수 완료로 표시
+            {t("markReviewedLabel")}
           </button>
         </div>
       )}
@@ -379,8 +385,8 @@ export default function ChipRunAdminEditor({ chipRun }: { chipRun: ChipRunDetail
                 onDragStart={() => handleStageDragStart(stage.id)}
                 onDragEnd={handleStageDragEnd}
                 className="cursor-grab select-none px-1 text-sm opacity-40 hover:opacity-70"
-                aria-label="드래그하여 순서 변경"
-                title="드래그하여 순서 변경"
+                aria-label={t("dragToReorderLabel")}
+                title={t("dragToReorderLabel")}
               >
                 ⠿
               </span>
@@ -402,8 +408,8 @@ export default function ChipRunAdminEditor({ chipRun }: { chipRun: ChipRunDetail
                 <button
                   onClick={() => setOpenMenuStageId((cur) => (cur === stage.id ? null : stage.id))}
                   className="rounded-md px-2 py-1 text-sm leading-none hover:bg-black/5 dark:hover:bg-white/10"
-                  aria-label="더보기"
-                  title="더보기"
+                  aria-label={t("moreOptionsLabel")}
+                  title={t("moreOptionsLabel")}
                 >
                   ⋮
                 </button>
@@ -418,7 +424,7 @@ export default function ChipRunAdminEditor({ chipRun }: { chipRun: ChipRunDetail
                         }}
                         className="block w-full px-3 py-1.5 text-left text-xs hover:bg-black/5 dark:hover:bg-white/10"
                       >
-                        다른 칩 런으로 이동
+                        {t("moveToOtherChipRunLabel")}
                       </button>
                       <button
                         onClick={() => {
@@ -427,7 +433,7 @@ export default function ChipRunAdminEditor({ chipRun }: { chipRun: ChipRunDetail
                         }}
                         className="block w-full px-3 py-1.5 text-left text-xs text-red-500 hover:bg-black/5 dark:hover:bg-white/10"
                       >
-                        삭제
+                        {t("delete")}
                       </button>
                     </div>
                   </>
@@ -437,13 +443,13 @@ export default function ChipRunAdminEditor({ chipRun }: { chipRun: ChipRunDetail
             <textarea
               defaultValue={stage.label ?? ""}
               onBlur={(e) => updateStage(stage.id, { label: e.target.value })}
-              placeholder="메모"
+              placeholder={t("memoPlaceholder")}
               rows={2}
               className="mt-2 w-full resize-y whitespace-pre-wrap text-sm rounded-md border border-black/15 dark:border-white/20 bg-transparent px-2 py-1"
             />
             <div className="mt-2 flex items-center gap-2 text-xs">
               <label className="flex items-center gap-1">
-                <span className="opacity-50">시작일</span>
+                <span className="opacity-50">{t("startDateLabel")}</span>
                 <input
                   type="date"
                   defaultValue={stage.startedDate ?? ""}
@@ -452,7 +458,7 @@ export default function ChipRunAdminEditor({ chipRun }: { chipRun: ChipRunDetail
                 />
               </label>
               <label className="flex items-center gap-1">
-                <span className="opacity-50">완료일</span>
+                <span className="opacity-50">{t("endDateLabel")}</span>
                 <input
                   type="date"
                   defaultValue={stage.completedDate ?? ""}
@@ -465,7 +471,7 @@ export default function ChipRunAdminEditor({ chipRun }: { chipRun: ChipRunDetail
               <input
                 defaultValue={stage.blockedReason ?? ""}
                 onBlur={(e) => updateStage(stage.id, { status: "blocked", blockedReason: e.target.value })}
-                placeholder="중단 사유"
+                placeholder={t("blockedReasonPlaceholder")}
                 className="mt-2 w-full text-sm rounded-md border border-red-500/40 bg-transparent px-2 py-1"
               />
             )}
@@ -498,8 +504,8 @@ export default function ChipRunAdminEditor({ chipRun }: { chipRun: ChipRunDetail
                       onClick={() => deletePhoto(photo.crpId)}
                       disabled={busy}
                       className="absolute -top-1.5 -right-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-xs leading-none text-white disabled:opacity-50"
-                      aria-label="사진 삭제"
-                      title="사진 삭제"
+                      aria-label={t("deletePhotoLabel")}
+                      title={t("deletePhotoLabel")}
                     >
                       ×
                     </button>
@@ -509,14 +515,14 @@ export default function ChipRunAdminEditor({ chipRun }: { chipRun: ChipRunDetail
               </div>
             )}
             <div className="mt-2 flex items-center gap-2 flex-wrap">
-              <span className="text-xs opacity-50">사진 첨부:</span>
+              <span className="text-xs opacity-50">{t("photoAttachLabel")}</span>
               <label
                 htmlFor={`photo-upload-${stage.id}`}
                 className={`cursor-pointer rounded-md border border-black/15 dark:border-white/20 px-2 py-1 text-xs ${
                   busy ? "opacity-50 pointer-events-none" : "hover:bg-black/5 dark:hover:bg-white/10"
                 }`}
               >
-                파일 선택
+                {t("chooseFileLabel")}
               </label>
               <input
                 id={`photo-upload-${stage.id}`}
@@ -530,7 +536,7 @@ export default function ChipRunAdminEditor({ chipRun }: { chipRun: ChipRunDetail
                 }}
                 className="hidden"
               />
-              {uploadingStageId === stage.id && <span className="text-xs opacity-50">업로드 중...</span>}
+              {uploadingStageId === stage.id && <span className="text-xs opacity-50">{t("uploadingEllipsis")}</span>}
             </div>
           </div>
         ))}
@@ -551,7 +557,7 @@ export default function ChipRunAdminEditor({ chipRun }: { chipRun: ChipRunDetail
         <input
           value={newStageLabel}
           onChange={(e) => setNewStageLabel(e.target.value)}
-          placeholder="메모 (선택)"
+          placeholder={t("memoOptionalPlaceholder")}
           className="flex-1 text-sm rounded-md border border-black/15 dark:border-white/20 bg-transparent px-2 py-1"
         />
         <button
@@ -559,18 +565,18 @@ export default function ChipRunAdminEditor({ chipRun }: { chipRun: ChipRunDetail
           disabled={busy}
           className="text-sm rounded-md bg-blue-600 text-white px-3 py-1 disabled:opacity-50"
         >
-          스테이지 추가
+          {t("addStageLabel")}
         </button>
       </div>
 
       <div className="rounded-lg border border-red-500/30 p-3 flex items-center gap-2">
-        <span className="text-sm">이 칩 런 전체를 다른 칩 런으로 병합:</span>
+        <span className="text-sm">{t("mergeEntireChipRunLabel")}</span>
         <select
           value={mergeTargetId}
           onChange={(e) => setMergeTargetId(Number(e.target.value) || "")}
           className="text-xs rounded-md border border-black/15 dark:border-white/20 bg-transparent px-2 py-1 max-w-[10rem] truncate"
         >
-          <option value="">선택...</option>
+          <option value="">{t("selectEllipsis")}</option>
           {otherRuns.map((r) => (
             <option key={r.id} value={r.id}>
               {r.projectName} · {r.label}
@@ -582,7 +588,7 @@ export default function ChipRunAdminEditor({ chipRun }: { chipRun: ChipRunDetail
           disabled={busy || !mergeTargetId}
           className="text-xs rounded-md border border-red-500 text-red-500 px-2 py-1 disabled:opacity-50"
         >
-          병합 (이 칩 런은 삭제됨)
+          {t("mergeConfirmButtonLabel")}
         </button>
       </div>
 
@@ -595,14 +601,14 @@ export default function ChipRunAdminEditor({ chipRun }: { chipRun: ChipRunDetail
             className="w-80 rounded-lg border border-black/15 dark:border-white/20 bg-white dark:bg-neutral-900 p-4 flex flex-col gap-3"
             onClick={(e) => e.stopPropagation()}
           >
-            <h4 className="text-sm font-medium">다른 칩 런으로 이동</h4>
+            <h4 className="text-sm font-medium">{t("moveToOtherChipRunLabel")}</h4>
             <select
               value={moveModalTarget}
               onChange={(e) => setMoveModalTarget(Number(e.target.value) || "")}
               className="text-sm rounded-md border border-black/15 dark:border-white/20 bg-transparent px-2 py-1"
               autoFocus
             >
-              <option value="">이동할 칩 런 선택...</option>
+              <option value="">{t("selectTargetChipRunLabel")}</option>
               {otherRuns.map((r) => (
                 <option key={r.id} value={r.id}>
                   {r.projectName} · {r.label}
@@ -614,7 +620,7 @@ export default function ChipRunAdminEditor({ chipRun }: { chipRun: ChipRunDetail
                 onClick={() => setMoveModalStageId(null)}
                 className="text-xs rounded-md border border-black/15 dark:border-white/20 px-3 py-1.5"
               >
-                취소
+                {t("cancel")}
               </button>
               <button
                 onClick={async () => {
@@ -625,7 +631,7 @@ export default function ChipRunAdminEditor({ chipRun }: { chipRun: ChipRunDetail
                 disabled={busy || !moveModalTarget}
                 className="text-xs rounded-md bg-blue-600 text-white px-3 py-1.5 disabled:opacity-50"
               >
-                이동
+                {t("moveLabel")}
               </button>
             </div>
           </div>

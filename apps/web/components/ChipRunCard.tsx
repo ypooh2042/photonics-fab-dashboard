@@ -1,5 +1,7 @@
 import Link from "next/link";
 import type { ChipRunSummary } from "@/lib/data";
+import { getServerLang } from "@/lib/i18n-server";
+import { translate } from "@/lib/i18n";
 
 const STATUS_STYLE: Record<string, string> = {
   active: "bg-blue-500/15 text-blue-600 dark:text-blue-400",
@@ -7,7 +9,9 @@ const STATUS_STYLE: Record<string, string> = {
   abandoned: "bg-gray-500/15 text-gray-500",
 };
 
-export default function ChipRunCard({ chipRun }: { chipRun: ChipRunSummary }) {
+export default async function ChipRunCard({ chipRun }: { chipRun: ChipRunSummary }) {
+  const lang = await getServerLang();
+  const t = (key: Parameters<typeof translate>[0]) => translate(key, lang);
   const { total, complete, blocked } = chipRun.stageCounts;
   return (
     <Link
@@ -33,14 +37,14 @@ export default function ChipRunCard({ chipRun }: { chipRun: ChipRunSummary }) {
           />
         </div>
         <span>
-          {complete}/{total} 단계
+          {complete}/{total} {t("stagesLabel")}
         </span>
         {blocked > 0 && <span className="text-red-500">blocked {blocked}</span>}
       </div>
-      <p className="mt-2 text-xs opacity-50">최근 업데이트: {chipRun.lastUpdatedDate}</p>
-      {chipRun.needsReview && (
-        <p className="mt-1 text-xs text-amber-500">⚠ 검수 필요 (낮은 신뢰도)</p>
-      )}
+      <p className="mt-2 text-xs opacity-50">
+        {t("lastUpdated")}: {chipRun.lastUpdatedDate}
+      </p>
+      {chipRun.needsReview && <p className="mt-1 text-xs text-amber-500">{t("needsReviewWarning")}</p>}
     </Link>
   );
 }

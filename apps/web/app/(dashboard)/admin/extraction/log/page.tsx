@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useLanguage } from "@/components/LanguageContext";
 
 interface Row {
   notePath: string;
@@ -16,6 +17,7 @@ export default function AdminExtractionLogPage() {
   const [loading, setLoading] = useState(true);
   const [reprocessing, setReprocessing] = useState<string | null>(null);
   const [resultMsg, setResultMsg] = useState<string | null>(null);
+  const { lang, t } = useLanguage();
 
   function load() {
     setLoading(true);
@@ -41,17 +43,19 @@ export default function AdminExtractionLogPage() {
     setReprocessing(null);
     setResultMsg(
       res.ok
-        ? `${notePath}: 완료 (chip_runs ${data.chipRuns}, recipe_entries ${data.recipeEntries})`
-        : `${notePath}: 실패 — ${data.error}`,
+        ? `${notePath}: ${t("reprocessDoneLabel")} (chip_runs ${data.chipRuns}, recipe_entries ${data.recipeEntries})`
+        : `${notePath}: ${t("reprocessFailedLabel")} — ${data.error}`,
     );
     load();
   }
 
-  if (loading) return <p className="opacity-60">불러오는 중...</p>;
+  if (loading) return <p className="opacity-60">{t("loadingEllipsis")}</p>;
 
   return (
     <div>
-      <h1 className="text-xl font-semibold mb-4">자동추출 로그 ({rows.length}개 노트)</h1>
+      <h1 className="text-xl font-semibold mb-4">
+        {t("extractionLogLabel")} ({rows.length} {t("notesCountSuffix")})
+      </h1>
       {resultMsg && <p className="text-sm mb-3 opacity-80">{resultMsg}</p>}
       <div className="flex flex-col gap-1">
         {rows.map((r) => (
@@ -70,14 +74,18 @@ export default function AdminExtractionLogPage() {
             </div>
             <span className="text-xs opacity-50 whitespace-nowrap">{r.lastProcessedAt}</span>
             {r.consecutiveFailures > 0 && (
-              <span className="text-xs text-red-500">실패 {r.consecutiveFailures}회</span>
+              <span className="text-xs text-red-500">
+                {lang === "ko"
+                  ? `${t("failureCountLabel")} ${r.consecutiveFailures}${t("failureCountSuffix")}`
+                  : `${r.consecutiveFailures} ${t("failureCountLabel")}`}
+              </span>
             )}
             <button
               onClick={() => reprocess(r.notePath)}
               disabled={reprocessing === r.notePath}
               className="text-xs rounded-md border border-black/15 dark:border-white/20 px-2 py-1 hover:border-blue-500 disabled:opacity-50 whitespace-nowrap"
             >
-              {reprocessing === r.notePath ? "재처리 중..." : "재처리"}
+              {reprocessing === r.notePath ? t("reprocessingLabel") : t("reprocessLabel")}
             </button>
           </div>
         ))}

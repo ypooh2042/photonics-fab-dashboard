@@ -3,12 +3,14 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useLanguage } from "@/components/LanguageContext";
 
 export default function ExtractionMenu() {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const pathname = usePathname();
   const isActive = pathname.startsWith("/admin/extraction");
+  const { t } = useLanguage();
 
   useEffect(() => {
     function onClickOutside(e: MouseEvent) {
@@ -26,7 +28,7 @@ export default function ExtractionMenu() {
         aria-expanded={open}
         className={isActive ? "font-bold opacity-100" : "opacity-80 hover:opacity-100"}
       >
-        GPT 랩노트 자동추출(beta) <span className="text-xs">▾</span>
+        {t("extractionMenuLabel")} <span className="text-xs">▾</span>
       </button>
       {open && (
         <div
@@ -38,14 +40,14 @@ export default function ExtractionMenu() {
             onClick={() => setOpen(false)}
             className="block px-3 py-2 hover:bg-black/5 dark:hover:bg-white/10"
           >
-            자동추출 검수
+            {t("extractionReviewLabel")}
           </Link>
           <Link
             href="/admin/extraction/log"
             onClick={() => setOpen(false)}
             className="block px-3 py-2 hover:bg-black/5 dark:hover:bg-white/10"
           >
-            자동추출 로그
+            {t("extractionLogLabel")}
           </Link>
         </div>
       )}

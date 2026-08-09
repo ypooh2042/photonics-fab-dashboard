@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useLanguage } from "@/components/LanguageContext";
 
 interface Project {
   id: number;
@@ -24,6 +25,7 @@ export default function AdminProjectsPage() {
   const [slugEdited, setSlugEdited] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const { lang, t } = useLanguage();
 
   function load() {
     fetch("/api/admin/projects")
@@ -44,7 +46,7 @@ export default function AdminProjectsPage() {
     setBusy(false);
     if (!res.ok) {
       const d = await res.json().catch(() => ({}));
-      setError(d.error ?? "추가 실패");
+      setError(d.error ?? t("addFailed"));
       return;
     }
     setName("");
@@ -55,7 +57,9 @@ export default function AdminProjectsPage() {
 
   async function removeProject(p: Project) {
     const warned = confirm(
-      `"${p.name}" 프로젝트를 삭제하면 소속된 칩 런 ${p.chipRunCount}개와 관련 데이터가 모두 없어지고 되돌릴 수 없습니다. 정말 삭제하시겠습니까?`,
+      lang === "ko"
+        ? `"${p.name}" ${t("confirmDeleteProjectPrefix")} ${p.chipRunCount}${t("confirmDeleteProjectSuffix")}`
+        : `"${p.name}" ${t("confirmDeleteProjectPrefix")} ${p.chipRunCount} ${t("confirmDeleteProjectSuffix")}`,
     );
     if (!warned) return;
     setBusy(true);
@@ -66,7 +70,7 @@ export default function AdminProjectsPage() {
 
   return (
     <div className="max-w-lg">
-      <h1 className="text-xl font-semibold mb-4">프로젝트 관리</h1>
+      <h1 className="text-xl font-semibold mb-4">{t("manageProjectsHeading")}</h1>
 
       <div className="flex flex-col gap-2 mb-6">
         {projects.map((p) => (
@@ -77,24 +81,26 @@ export default function AdminProjectsPage() {
             <div>
               <span className="font-medium">{p.name}</span>
               <span className="opacity-50 ml-2">({p.slug})</span>
-              <span className="opacity-50 ml-2">칩 런 {p.chipRunCount}개</span>
+              <span className="opacity-50 ml-2">
+                {lang === "ko" ? `${t("chipRunsLabel")} ${p.chipRunCount}개` : `${p.chipRunCount} ${t("chipRunsLabel")}`}
+              </span>
             </div>
             <button onClick={() => removeProject(p)} disabled={busy} className="text-red-500 text-xs">
-              삭제
+              {t("delete")}
             </button>
           </div>
         ))}
       </div>
 
       <div className="rounded-lg border border-dashed border-black/20 dark:border-white/25 p-4 flex flex-col gap-2">
-        <p className="text-sm font-medium">새 프로젝트 추가</p>
+        <p className="text-sm font-medium">{t("addNewProjectLabel")}</p>
         <input
           value={name}
           onChange={(e) => {
             setName(e.target.value);
             if (!slugEdited) setSlug(slugify(e.target.value));
           }}
-          placeholder="프로젝트 이름"
+          placeholder={t("projectNamePlaceholder")}
           className="rounded-md border border-black/15 dark:border-white/20 bg-transparent px-3 py-2 text-sm"
         />
         <input
@@ -103,7 +109,7 @@ export default function AdminProjectsPage() {
             setSlug(e.target.value);
             setSlugEdited(true);
           }}
-          placeholder="slug (예: new-project)"
+          placeholder={t("slugPlaceholder")}
           className="rounded-md border border-black/15 dark:border-white/20 bg-transparent px-3 py-2 text-sm"
         />
         {error && <p className="text-sm text-red-500">{error}</p>}
@@ -112,7 +118,7 @@ export default function AdminProjectsPage() {
           disabled={busy || !name.trim() || !slug.trim()}
           className="rounded-md bg-blue-600 text-white py-2 text-sm disabled:opacity-50"
         >
-          추가
+          {t("add")}
         </button>
       </div>
     </div>
