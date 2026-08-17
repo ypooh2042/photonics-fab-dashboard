@@ -28,6 +28,7 @@ function LoginForm() {
       return;
     }
     router.push(searchParams.get("next") ?? "/");
+    router.refresh();
   }
 
   return (

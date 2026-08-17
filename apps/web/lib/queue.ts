@@ -7,6 +7,25 @@ import type { GridBounds } from "./geometry";
 
 export type { GridBounds };
 
+// SQLite's `datetime('now')` stores UTC with no timezone marker (e.g.
+// "2026-08-17 05:06:07"), so display-facing timestamps need an explicit
+// conversion to KST — the raw stored value must never be shown as-is.
+// Not used for FCFS ordering (that stays on the raw UTC string, which still
+// sorts correctly), only for values rendered directly in the UI.
+function formatKst(sqliteUtc: string): string {
+  const utcDate = new Date(`${sqliteUtc.replace(" ", "T")}Z`);
+  return new Intl.DateTimeFormat("sv-SE", {
+    timeZone: "Asia/Seoul",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).format(utcDate);
+}
+
 export interface WeeklySettings {
   weeklyCapacityHours: number;
   cutoverDayOfWeek: number;
@@ -385,7 +404,7 @@ function listWeekSubmissions(weekId: string, equipmentUserId?: number): QueueSub
   return rows.map((r) => ({
     id: r.id,
     submittedBy: r.submitted_by,
-    submittedAt: r.submitted_at,
+    submittedAt: formatKst(r.submitted_at),
     gdsFilename: r.gds_filename,
     resistType: r.resist_type,
     doseLabel: r.dose_label,
@@ -567,7 +586,7 @@ export function getSubmissionDetail(id: number): SubmissionDetail | null {
   return {
     id: row.id,
     submittedBy: row.submitted_by,
-    submittedAt: row.submitted_at,
+    submittedAt: formatKst(row.submitted_at),
     gdsFilename: row.gds_filename,
     resistType: row.resist_type,
     doseLabel: row.dose_label,

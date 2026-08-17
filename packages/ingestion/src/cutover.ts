@@ -1,6 +1,15 @@
 import { getDb } from "./db.js";
 import { currentWeekId, scheduleWeek, type Job } from "@fab-dashboard/scheduling";
 
+// SQLite's `datetime('now')` stores UTC with no timezone marker (e.g.
+// "2026-08-12 08:05:01"). Passing that straight to `new Date(...)` makes JS
+// parse it as the *process's local* timezone instead of UTC — on a KST host
+// that silently shifts it 9 hours, which corrupts the "which week did we
+// last check" comparison below for hours after every rollover.
+function parseSqliteUtc(sqliteUtc: string): Date {
+  return new Date(`${sqliteUtc.replace(" ", "T")}Z`);
+}
+
 interface Settings {
   weeklyCapacityHours: number;
   cutoverDayOfWeek: number;
@@ -154,7 +163,7 @@ export function checkAndRunCutover(now: Date = new Date()): CutoverCheckResult {
   const b = boundary(settings);
 
   const nowWeekId = currentWeekId(b, now);
-  const lastRunWeekId = settings.lastCutoverRunAt ? currentWeekId(b, new Date(settings.lastCutoverRunAt)) : null;
+  const lastRunWeekId = settings.lastCutoverRunAt ? currentWeekId(b, parseSqliteUtc(settings.lastCutoverRunAt)) : null;
 
   if (lastRunWeekId === nowWeekId) {
     return { ran: false };
