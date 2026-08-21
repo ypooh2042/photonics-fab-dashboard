@@ -1,6 +1,6 @@
 # fab-dashboard 코드맵 인덱스
 
-**마지막 업데이트:** 2026-08-07
+**마지막 업데이트:** 2026-08-21
 **저장소:** https://github.com/ypooh2042/photonics-fab-dashboard
 
 포토닉스 반도체 공정(fab) 진행 상황, 레시피 위키, e-beam 노광 큐/레이아웃을 관리하는
@@ -41,6 +41,16 @@ npm workspaces 모노레포입니다 (`workspaces: ["apps/web", "packages/*"]`).
 | [integrations.md](./integrations.md) | GDS 분석 사이드카, Claude CLI 기반 LLM 추출 |
 | [workers.md](./workers.md) | 인제스천 파이프라인, 주간 이월(cutover), cron/systemd |
 
+### 도메인 규칙이 문서화된 곳 (헷갈리기 쉬운 것)
+
+| 규칙 | 위치 |
+|------|------|
+| 노광 큐는 주차별 목록이 아니라 **누적 백로그** — 이월이 미완료 신청을 옮기지 않음 | [backend.md](./backend.md) · [workers.md](./workers.md) |
+| 과거 주차 조회 = "그때 대기 목록"이 아니라 **노광 완료 이력**(읽기 전용) | [backend.md](./backend.md) · [frontend.md](./frontend.md) |
+| 칩 레이아웃 **읽기는 절대 삭제하지 않음** (prune은 명시적 변경 지점에서만) | [backend.md](./backend.md) |
+| 닫힌 주차 배치의 패턴 후보는 `chip_layout_pattern_snapshots`에 **동결** | [database.md](./database.md) |
+| 측정된 숫자일 때만 넣는 LLM 추출 필드 3종 (selectivity 자동 계산 입력) | [integrations.md](./integrations.md) |
+
 ## 아키텍처 개요
 
 ```
@@ -58,7 +68,8 @@ npm workspaces 모노레포입니다 (`workspaces: ["apps/web", "packages/*"]`).
         apps/web/lib/*            packages/ingestion/*
               │                        ▲
    Next.js 16 App Router         cron(1h) cutover-check
-   apps/web/app/**               (주간 큐 경계 스케줄)
+   apps/web/app/**               (주차 열고/닫기 + 백로그 재스케줄,
+      │                            미완료 신청은 이월하지 않음)
       │  proxy.ts (인증 게이트)
       ▼
    nginx + Let's Encrypt  →  fab.yourdomain.example

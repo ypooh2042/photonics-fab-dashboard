@@ -1,11 +1,11 @@
 # Workers 코드맵 (인제스천 · 스케줄링 · 배포 잡)
 
-**마지막 업데이트:** 2026-08-07
+**마지막 업데이트:** 2026-08-21
 **진입점:** `packages/ingestion/src/run-update.ts`, `run-cutover-check.ts`,
 `backfill.ts`; `packages/scheduling/src/*`
 
-백그라운드 처리: (1) 랩노트 인제스천 파이프라인, (2) 주간 노광 큐 이월(cutover),
-(3) 순수 스케줄링 라이브러리. cron으로 주기 실행됩니다.
+백그라운드 처리: (1) 랩노트 인제스천 파이프라인, (2) 순수 스케줄링 라이브러리,
+(3) 주간 노광 큐 이월(cutover), (4) cron/systemd 배포 잡.
 
 ## 1. 인제스천 파이프라인 (`packages/ingestion`)
 
@@ -20,8 +20,8 @@ Obsidian 볼트 랩노트 → LLM 추출 → SQLite. tsx로 실행되는 TS 스�
 | `backfill.ts` | 과거 노트 일괄 처리 (수동 스윕) |
 | `cli-dry-run.ts` | 실제 쓰기 없이 추출 결과 미리보기 |
 | `reprocess-one.ts` | 노트 하나 강제 재처리 |
-| `run-cutover-check.ts` | 주간 경계 통과 여부 확인 → cutover 실행 |
-| `cutover.ts` | `checkAndRunCutover()` — 주간 큐 스케줄 확정 (scheduling 사용) |
+| `run-cutover-check.ts` | 주간 경계 통과 여부 확인 → cutover 실행 (로그: `rolled over A -> B`) |
+| `cutover.ts` | `checkAndRunCutover()` — 주차 열고/닫기 + 백로그 재스케줄 (아래 3장 참고) |
 | `scan-notes.ts` | 노트 나열 + mtime/sha256 변경 감지 + 처리 상태 기록 |
 | `extract.ts` | `claude -p` CLI 추출 ([integrations.md](./integrations.md)) |
 | `upsert.ts` | 추출 JSON → chip_runs/stages/recipe_entries upsert, 노트 날짜 추론 |
@@ -69,7 +69,49 @@ Obsidian 볼트 랩노트 → LLM 추출 → SQLite. tsx로 실행되는 TS 스�
 > `apps/web`과 `packages/ingestion`에는 단위/통합/E2E 테스트가 없어, 전역 80%
 > 커버리지 기준([~/.claude/rules/testing.md])에는 미달입니다.
 
-## 3. cron / systemd (배포 잡)
+## 3. 주간 이월 (cutover)
+
+주간 경계를 넘겼는지 확인하고 큐 주차를 넘기는 파이프라인입니다. 진입점이 둘입니다:
+
+| 경로 | 함수 | 트리거 |
+|------|------|--------|
+| 자동 | `packages/ingestion/src/cutover.ts` `checkAndRunCutover(now?)` | cron 매시 (`run-cutover-check.ts`) |
+| 수동 | `apps/web/lib/queue.ts` `runManualCutover()` | 관리자 `POST /api/admin/cutover` |
+
+### 이월이 하는 일 (그리고 하지 않는 일)
+
+두 경로 모두 동일하게 이 네 가지만 수행합니다:
+
+1. 새 주차를 `open`으로 생성 (`ensureWeek`) — 영구 장비 사용자의 주차×사용자
+   용량/로딩 스냅샷(`weekly_queue_week_users`)을 시드
+2. 이전 주차를 `closed`로 마킹
+3. `weekly_schedule_settings.last_cutover_run_at` 갱신 + `audit_log` 기록
+   (`auto_cutover` / `manual_cutover`)
+4. `recomputeAllBacklogUsers(toWeekId)` — 백로그 전체를 새 주차 용량 기준으로
+   FCFS 재스케줄 + 색상(green/yellow/orange) 갱신
+
+> **미완료 신청을 주차 간에 강제 이동시키지 않습니다.** `status='pending'` 신청은
+> 장비 사용자별 **단일 백로그**에 계속 쌓이며, `assigned_week_id`로 필터링되지
+> 않고 항상 현재 활성 주차 용량 기준으로 스케줄됩니다. 큐에서 빠지는 유일한 방법은
+> 웹앱의 "노광 완료" 처리(`completeSubmission`)입니다 —
+> [backend.md](./backend.md) "노광 큐 = 누적 백로그 모델" 참고.
+>
+> 이 변경으로 `CutoverCheckResult`에서 `movedCount`가 사라졌고,
+> `run-cutover-check.ts` 로그도 `rolled over <from> -> <to>`만 출력합니다.
+
+### 코드 중복 주의
+
+`packages/ingestion`은 `apps/web`에서 import할 수 없으므로, `cutover.ts`에
+`ensureWeekUserSnapshot` / `ensureWeek` / `recomputeWeekUser` /
+`recomputeAllBacklogUsers`가 `apps/web/lib/queue.ts`와 **의도적으로 중복**되어
+있습니다. 백로그 스케줄링 규칙을 바꿀 때는 **두 파일을 함께** 수정해야 합니다.
+
+`cutover.ts`는 주차 경계 판정에 타임스탬프 정확 일치가 아니라 "지금이 논리적으로
+어느 주차인가"(`currentWeekId`)를 사용하므로, cron이 밀리거나 한 번 걸러도 다음
+체크에서 정상 발화합니다. SQLite `datetime('now')`는 타임존 표기 없는 UTC라
+`parseSqliteUtc()`로 명시 파싱합니다(KST 호스트에서 9시간 밀리던 버그 방지).
+
+## 4. cron / systemd (배포 잡)
 
 `deploy/cron/fab-dashboard-crontab.txt`:
 

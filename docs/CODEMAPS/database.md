@@ -1,6 +1,6 @@
 # Database 코드맵
 
-**마지막 업데이트:** 2026-08-09
+**마지막 업데이트:** 2026-08-21
 **스키마 파일:** `db/schema.sql` (수동 관리, 마이그레이션 도구 없음)
 **DB 파일:** `data/fab_dashboard.sqlite` (better-sqlite3, WAL, gitignore)
 
@@ -66,9 +66,9 @@
 | 테이블 | 목적 |
 |--------|------|
 | `equipment_users` | 장비 사용자 (alias, is_permanent, capacity_hours, loading_cost_minutes) |
-| `layout_submissions` | GDS 노광 신청 (레이어 면적, 도즈 범위, 노광 시간, 배정 주차, 색상) |
+| `layout_submissions` | GDS 노광 신청 (레이어 면적, 도즈 범위, 노광 시간, 배정 주차, 색상, `status`, `completed_at`) |
 | `weekly_schedule_settings` | 단일 행(id=1) 전역 설정 (용량, cutover 시각, 도즈/드웰 파라미터) |
-| `weekly_queue_weeks` | 주차 (week_id, 용량 스냅샷, status) |
+| `weekly_queue_weeks` | 주차 (week_id, 용량 스냅샷, status `open`/`closed`) |
 | `weekly_queue_week_users` | 주차×사용자 용량/로딩 스냅샷 (FCFS를 사용자별 독립 실행) |
 | `resist_reference_doses` | 레지스트별 기준 도즈 (시드: ZEP520A 240) |
 | `ebeam_currents` | e-beam 전류 프리셋 (시드: 2nA KANC 표준) |
@@ -76,6 +76,20 @@
 > `weekly_schedule_settings.loading_cost_minutes`는 이제 스케줄링에 직접 쓰이지
 > 않고, 새 장비 사용자 생성 시 `equipment_users.loading_cost_minutes` 시드값으로만
 > 사용됩니다. 실제 스케줄링은 사용자별 값을 사용합니다.
+
+> **`layout_submissions.status` / `assigned_week_id` 의미 (중요):** status는
+> `'pending' | 'completed'` 두 값만 씁니다.
+> - `pending` 행은 **주차로 분할되지 않는 누적 백로그**입니다. `assigned_week_id`는
+>   처음 신청된 주차로 남아 있지만 스케줄링/조회에서 필터로 쓰이지 **않으며**,
+>   FCFS는 항상 현재 활성 주차의 `weekly_queue_week_users` 스냅샷 기준으로 돕니다.
+>   주간 이월(cutover)은 이 행들을 다른 주차로 옮기지 않습니다.
+> - `completed` 행은 `completeSubmission`이 기록한 노광 완료 이력입니다. 이때
+>   `assigned_week_id`가 **실제 노광이 돌아간 주차로 재배정**되고 `completed_at`이
+>   찍힙니다. 즉 완료 행의 `assigned_week_id`는 "신청 주차"가 아니라 "노광 주차"입니다.
+>   과거 주차 큐 조회는 이 완료 행만 읽습니다 ([backend.md](./backend.md) 참고).
+>
+> `completed_at TEXT`는 마이그레이션 도구가 없으므로 `db/schema.sql` 반영 + 라이브
+> DB에 수동 `ALTER TABLE`로 적용합니다 (이 프로젝트의 수동 ALTER 규약).
 
 ### e-beam Mock 칩 배치 에디터
 
@@ -86,14 +100,30 @@
 | `chip_layout_exposure_jobs` | 배치 내 노광 잡 (current/dose/scan_step/window_key) |
 | `chip_layout_pattern_slots` | 배치 내 패턴 슬롯 문자(a/b/c…) — 앱 코드가 유일/연속 관리 |
 | `chip_layout_placement_instances` | 노광 잡 내 패턴 배치 (pattern_key, center_x/y) |
+| `chip_layout_pattern_snapshots` | **닫힌 주차** 배치의 얼린 패턴 후보 목록 (UNIQUE(batch_id, pattern_key)) |
 
 > `chip_layout_jobs.week_id`가 주차에 스코프됩니다. 이월(cutover) 시 배치는
-> 이월되지 않고 히스토리로 누적만 되며, 에디터는 현재 주차 행만 나열하므로
-> 새 주차는 빈 목록으로 시작합니다.
+> 이월되지 않고 히스토리로 누적만 되며, 에디터는 기본적으로 현재 주차 행만
+> 나열하므로 새 주차는 빈 목록으로 시작합니다. `listJobs(equipmentUserId, weekId?)`에
+> 과거 주차를 명시하면 그 주차 배치를 **읽기 전용**으로 조회하며, 이 경우 결과가
+> 비어도 "Batch1"을 자동 생성하지 않습니다(히스토리 조작 방지).
 >
-> `pattern_key`는 저장된 FK가 아니라 그 주차 큐에서 매 읽기마다 결정적으로
-> 생성되는 문자열입니다 (`lib/chip-layout.ts` `listPatternCandidates`). 같은
-> 패턴을 같은 노광 잡에 여러 번 배치할 수 있어 uniqueness 제약이 없습니다.
+> `pattern_key`는 저장된 FK가 아니라 그 배치의 주차 큐에서 결정적으로 생성되는
+> 문자열입니다 (`lib/chip-layout.ts` `computeRawCandidates` — 전역 활성 주차가 아니라
+> **배치 자신의 `week_id`** 기준, `status IN ('pending','completed')` 신청 전부가
+> 패턴 소스). 같은 패턴을 같은 노광 잡에 여러 번 배치할 수 있어 uniqueness 제약이
+> 없습니다.
+>
+> **`chip_layout_pattern_snapshots` (insert-only):** 배치의 주차가 `closed`가 된 뒤
+> 그 배치의 패턴을 처음 읽는 시점에, 그때의 후보 목록(patternKey, slot_index,
+> label, size, area, svg 경로, grid 경계, layer/datatype)을 통째로 얼려 저장합니다
+> (`getOrCreateFrozenPatternSnapshot`). 이후 그 주차 `layout_submissions`가 바뀌어도
+> (예: 뒤늦은 노광 완료 기록) 과거 배치 뷰가 흔들리지 않습니다. **읽기가 이 테이블이나
+> `chip_layout_placement_instances`를 삭제하는 경로는 없습니다** — 과거에 읽기 중
+> prune이 실제 배치 행을 조용히 지운 버그가 있었기 때문입니다. 유일한 삭제 지점은
+> `refreshPatternSnapshotForUserWeek`(완료 기록이 닫힌 주차에 들어올 때 재동결)와
+> 명시적 `pruneOrphanedPlacementsForUserWeek`(현재 `deleteSubmission`에서만 호출)입니다.
+> 상세는 [backend.md](./backend.md) "패턴 스냅샷 · orphan prune 규칙" 참고.
 
 ### 감사
 
@@ -109,11 +139,12 @@ projects ─< chip_runs ─< pipeline_stage_instances >─ recipe_entries >─ r
                 └─< chip_run_photos >─ photos              └─ recipe_definitions
 
 equipment_users ─< layout_submissions >─ weekly_queue_weeks ─< weekly_queue_week_users
-       │                                        │
+       │            (pending=백로그 / completed=노광 주차)  │
        └─< chip_layout_jobs ──────────────< (week_id) ┘
                   ├─< chip_layout_chips
                   ├─< chip_layout_exposure_jobs ─< chip_layout_placement_instances
-                  └─< chip_layout_pattern_slots
+                  ├─< chip_layout_pattern_slots
+                  └─< chip_layout_pattern_snapshots   (주차 closed 시 동결)
 ```
 
 ## 시드 데이터 (schema.sql 하단)

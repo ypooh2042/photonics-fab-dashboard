@@ -1,6 +1,6 @@
 # Integrations 코드맵
 
-**마지막 업데이트:** 2026-08-07
+**마지막 업데이트:** 2026-08-21
 
 외부 서비스/프로세스 연동: (1) GDS 분석 FastAPI 사이드카, (2) Claude CLI 기반
 LLM 랩노트 추출.
@@ -56,8 +56,22 @@ services/gds-analyzer/
 |------|------|
 | `src/extract.ts` | 시스템 프롬프트 조립 + `claude -p` 실행 + JSON 파싱 |
 | `src/prompts/system-prompt.md` | 추출 지침 (시스템 프롬프트 본문) |
-| `src/prompts/few-shot-examples.ts` | 볼트 실제 노트 기반 few-shot 예시 |
+| `src/prompts/few-shot-examples.ts` | 볼트 실제 노트 기반 few-shot 예시 (gitignore — 로컬 전용) |
 | `src/types.ts` | `NoteExtraction`, `StageType`, `RecipeCategory` 등 스키마 타입 |
+
+### 측정값 전용 필드 규칙 (selectivity 파이프라인)
+
+`system-prompt.md`에는 **`resist_thickness_nm`, `pre_strip_step_height_nm`,
+`post_strip_step_height_nm` 세 필드에만 적용되는 강제 규칙**이 있습니다: 노트가
+실제로 **측정된 숫자**(알파스텝/AFM 등)를 보고한 경우에만 그 키를 포함하고,
+언급이 없거나 "측정 안함" 같은 서술만 있거나 범위/모호한 표현이면 **키를 아예
+생략**합니다. 문자열(`"측정 안함"`, `"39~39.5nm"`)로 채우거나 값을 추측해 넣는 것은
+금지입니다.
+
+이유: 이 세 값이 `apps/web/lib/data.ts`의 `withDerivedSelectivity()`에 그대로
+들어가 selectivity를 자동 계산하기 때문입니다. 키가 없으면 "미측정"으로 올바르게
+해석되어 계산이 그냥 건너뛰어지지만, 잘못된/추측 숫자가 들어가면 존재하지 않아야 할
+selectivity 포인트가 조용히 트렌드 차트에 찍힙니다.
 
 ### 인증 동작 (주의)
 

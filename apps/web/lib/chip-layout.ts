@@ -574,8 +574,10 @@ function listPatternCandidatesInternal(batchId: number): PatternCandidateInterna
  * a pattern no longer in this week's queue — nothing to keep in sync
  * otherwise, since patternKey isn't a foreign key.
  *
- * Call this ONLY from an action that can actually shrink or move a week's GDS
- * submissions (deleting a submission, cutover) — never from a read path. A
+ * Call this ONLY from an action that can actually shrink a week's GDS
+ * submissions (deleteSubmission — cutover no longer moves submissions between
+ * weeks under the backlog model, so it has nothing left to prune) — never
+ * from a read path. A
  * batch-scoping bug here once caused a plain page view to silently delete
  * real placements (candidates computed against the wrong week made everything
  * look orphaned); getPatternCandidates() no longer calls this for that reason.
@@ -709,10 +711,12 @@ export function refreshPatternSnapshotForUserWeek(equipmentUserId: number, weekI
 
 /**
  * Explicit orphan cleanup for one equipment user's batches in one queue week.
- * Call this right after an action that removes or moves that week's GDS
- * submissions (deleteSubmission, cutover) so any placement instance left
- * pointing at a pattern that no longer exists gets cleaned up immediately —
- * deliberately, not as a side effect of someone merely viewing the batch.
+ * Call this right after an action that removes that week's GDS submissions
+ * (currently only deleteSubmission — cutover doesn't move submissions
+ * between weeks under the backlog model, so it never orphans anything here)
+ * so any placement instance left pointing at a pattern that no longer exists
+ * gets cleaned up immediately — deliberately, not as a side effect of
+ * someone merely viewing the batch.
  */
 export function pruneOrphanedPlacementsForUserWeek(equipmentUserId: number, weekId: string): void {
   const db = getDb();

@@ -115,10 +115,29 @@ cd services/gds-analyzer && ./run.sh   # 127.0.0.1:8003
 | `npm run dev` | 웹앱 개발 서버 |
 | `npm run build` | 웹앱 프로덕션 빌드 |
 | `npm run ingest:update` | 변경 노트 증분 추출 (cron 3h가 사용) |
-| `npm run ingest:cutover` | 주간 큐 이월 경계 체크 (cron 1h가 사용) |
+| `npm run ingest:cutover` | 주간 큐 이월 경계 체크 (cron 1h가 사용, 아래 참고) |
 | `npm run ingest:backfill` | 과거 노트 일괄 처리 |
 | `npm run ingest:dry-run` | 쓰기 없이 추출 미리보기 |
 | `npm run test:scheduling` | `packages/scheduling` vitest 테스트 |
+
+## 노광 큐 동작 (운영자용 요약)
+
+노광 큐는 "이번 주 목록"이 아니라 **장비 사용자별로 계속 쌓이는 백로그**입니다.
+
+- 신청(`submit`)한 GDS는 `pending` 상태로 큐에 들어가고, **누가 노광 완료를
+  기록하기 전까지 큐에서 사라지지 않습니다.**
+- 주간 이월(cutover, 기본 매주 수요일 08:00 KST)은 새 주차를 열고 이전 주차를 닫은
+  뒤, 백로그 전체를 새 주차 용량 기준으로 다시 스케줄/색칠만 합니다.
+  **미완료 신청을 다음 주로 옮기지 않습니다.**
+- 노광을 실제로 돌린 뒤에는 큐 상세 페이지의 **"노광 완료"**로 처리합니다. 이때
+  실제로 노광한 주차를 골라 기록하며(지난 주차 선택 가능), 그 신청은 백로그에서
+  빠지고 해당 주차의 이력으로 남습니다.
+- 큐 화면과 칩 배치 에디터의 **"지나간 노광 리스트"** 피커로 과거 주차를 볼 수
+  있습니다. 과거 주차 화면은 **그 주차에 노광 완료로 기록된 것만** 보여주는
+  읽기 전용 이력입니다 (그때 대기 중이던 목록이 아님).
+
+동작 상세는 [docs/CODEMAPS/backend.md](docs/CODEMAPS/backend.md)와
+[docs/CODEMAPS/workers.md](docs/CODEMAPS/workers.md)를 참고하세요.
 
 ## 배포 / 운영
 

@@ -1,6 +1,6 @@
 # Frontend 코드맵
 
-**마지막 업데이트:** 2026-08-09
+**마지막 업데이트:** 2026-08-21
 **진입점:** `apps/web/app/layout.tsx` (루트), `apps/web/app/(dashboard)/layout.tsx`,
 `apps/web/app/(public)/login/page.tsx`
 
@@ -52,7 +52,7 @@ apps/web/app/
 | `(dashboard)/page.tsx` | 프로젝트별 칩 런 진행 상황 개요 |
 | `recipes/page.tsx` → `[category]/[recipeName]/page.tsx` | 레시피 카테고리 → 레시피 상세/추세 |
 | `submit/page.tsx` | GDS 업로드 + 노광 파라미터로 노광 신청 |
-| `queue/page.tsx` → `queue/[id]/page.tsx` | 주간 노광 큐, 신청 상세 |
+| `queue/page.tsx` → `queue/[id]/page.tsx` | 노광 큐(누적 백로그) + 지나간 주차 이력, 신청 상세 + "노광 완료" 처리 |
 | `chips/[chipRunId]/page.tsx` | 칩 런 파이프라인 타임라인 + 사진 |
 | `chip-layout/[equipmentUserId]/page.tsx` | 사용자별 카세트 윈도우 mock 배치 에디터 |
 | `chip-layout/[equipmentUserId]/preview/[jobId]/page.tsx` | 배치 프리뷰 |
@@ -83,7 +83,8 @@ apps/web/app/
 | `ChipRunAdminEditor.tsx` | 칩 런/스테이지 관리자 편집 |
 | `RecipeAdminEditor.tsx`, `CreateRecipeForm.tsx`, `RecipeTrendChart.tsx` | 레시피 편집/추세(recharts) |
 | `RecipeEventAdmin.tsx` | 레시피 이벤트 마커 CRUD (RecipeAdminEditor에 임베드, 트렌드 카테고리만) |
-| `QueueTable.tsx` | 노광 큐 테이블 |
+| `QueueTable.tsx` | 노광 큐 테이블 + "지나간 노광 리스트" 주차 피커 |
+| `ExposureCompleteControl.tsx` | 신청 상세의 "노광 완료" 처리 (주차 선택 → `POST /api/queue/[id]/complete`) |
 | `ChipLayoutEditor.tsx`, `WindowCanvas.tsx`, `LayoutGridPreview.tsx`, `ChipLayoutPreviewModal.tsx`, `ChipLayoutPreviewViewer.tsx` | 칩 배치 에디터/캔버스 (react-zoom-pan-pinch) |
 | `EquipmentUserAdmin.tsx`, `EbeamCurrentAdmin.tsx`, `ResistDoseAdmin.tsx` | 설정 관리 폼 |
 | `ProjectFilterSelect.tsx` | 프로젝트 필터 |
@@ -102,6 +103,36 @@ apps/web/app/
 > (`nearestKey()` 헬퍼). 선은 작은 ▣ 마커만 표시하고(라벨 겹침 방지), 마커 클릭 시
 > SVG `foreignObject` 팝업(날짜+라벨)을 토글합니다. `events`는 페이지에서
 > `getRecipeEvents`로 서버 조회됩니다.
+
+> **"지나간 노광 리스트" 주차 피커 (`QueueTable.tsx`, `ChipLayoutEditor.tsx`):** 두
+> 화면 모두 `GET /api/queue/weeks`(`listWeeks()`)로 주차 목록을 **처음 열 때 한 번**
+> lazy fetch 하고, 선택 시 각자 `/api/queue?week=`, `/api/chip-layout/jobs?week=`
+> (+ `/api/equipment-users/[id]/week-loading?week=`)로 다시 읽습니다.
+> 현재(열린) 주차가 아니면 **읽기 전용**입니다 — `QueueTable`은 삭제 버튼을 숨기고
+> 안내 배너 + "현재 주차로 돌아가기"를 띄우며, `ChipLayoutEditor`는 편집 모드 진입을
+> 막습니다(`onToggleEdit`가 `viewingOpen` false면 즉시 return, 주차 전환 시 편집
+> 모드 해제).
+>
+> 과거 주차 큐 화면이 보여주는 것은 "그때 대기 중이던 목록"이 아니라 **그 주차로
+> 기록된 노광 완료 이력**입니다 (활성 주차만 누적 백로그를 보여줌) —
+> [backend.md](./backend.md) "주차 뷰의 이중 의미" 참고.
+
+> **`ExposureCompleteControl.tsx`:** 신청 상세 헤더(다운로드 버튼 옆)에 붙습니다.
+> `status === "completed"`면 "완료 주차" 라벨만 렌더하고, pending이면 confirm 경고 →
+> 주차 피커 → `POST /api/queue/[id]/complete { weekId }` → `router.refresh()`.
+> 고른 주차가 곧 그 신청의 노광 주차로 기록됩니다(과거 주차 선택 가능).
+
+> **`ChipLayoutPreviewViewer.tsx` 슬롯 사전:** "전체 패턴 뷰 & 파라미터 요약"의
+> 슬롯 사전 표는 **배치 어딘가에 실제로 배치된(placement instance가 있는) 패턴만**
+> 나열합니다. 슬롯 문자는 배치(batch) 단위로 부여되어 모든 노광 잡이 공유하므로,
+> 어느 노광 잡에든 한 번 놓였으면 "사용됨"으로 칩니다. (이전에는 배치 여부와 무관하게
+> 큐의 모든 후보를 나열했습니다.)
+
+> **`submit/page.tsx` 업로드/취소 레이스:** `onFileChange`가 `result`뿐 아니라
+> `uploadInfo`도 **즉시** null로 비웁니다. 취소 핸들러의 가드가 `if (uploadInfo &&
+> !result)`라서, 신청 성공 직후 새 업로드를 시작하면 비동기 구간 동안 이전(이미
+> 신청 완료된) 업로드의 `uploadInfo`가 남아 있어 취소 클릭이 방금 신청한 파일의
+> GDS/SVG를 지워버리던 문제가 있었습니다.
 
 ## 외부 의존성 (UI 관련)
 
