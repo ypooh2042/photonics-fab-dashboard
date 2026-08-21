@@ -80,8 +80,8 @@ export default function AdminSettingsPage() {
     }
     setCutoverResult(
       lang === "ko"
-        ? `${data.fromWeekId} → ${data.toWeekId}로 ${data.movedCount}건 이월됨`
-        : `${data.movedCount} items rolled over from ${data.fromWeekId} → ${data.toWeekId}`,
+        ? `${data.fromWeekId} → ${data.toWeekId} 주차 전환 완료 (미완료 노광은 그대로 큐에 남습니다)`
+        : `Rolled over ${data.fromWeekId} → ${data.toWeekId} (unfinished exposures stay in the queue)`,
     );
     fetch("/api/admin/settings")
       .then((r) => r.json())

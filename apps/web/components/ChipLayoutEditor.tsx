@@ -47,6 +47,12 @@ interface Job {
   displayOrder: number;
 }
 
+interface WeekSummary {
+  weekId: string;
+  label: string;
+  isOpen: boolean;
+}
+
 interface Chip {
   id: number;
   jobId: number;
@@ -120,6 +126,10 @@ export default function ChipLayoutEditor({
   const [exposureSummary, setExposureSummary] = useState<ExposureSummary | null>(null);
   const [selectedWindowKey, setSelectedWindowKey] = useState<WindowKey>("B");
   const [editMode, setEditMode] = useState(false);
+  const [viewWeekId, setViewWeekId] = useState<string | null>(null);
+  const [viewingOpen, setViewingOpen] = useState(true);
+  const [weekPickerOpen, setWeekPickerOpen] = useState(false);
+  const [weeks, setWeeks] = useState<WeekSummary[] | null>(null);
   const [newChipWidthMm, setNewChipWidthMm] = useState("22");
   const [thisWeekLoading, setThisWeekLoading] = useState<number | null>(null);
   const [showLoadingModal, setShowLoadingModal] = useState(false);
@@ -136,7 +146,8 @@ export default function ChipLayoutEditor({
   const selectedExposureJob = exposureJobs.find((e) => e.id === selectedExposureJobId) ?? null;
 
   function loadJobs(selectId?: number) {
-    fetch(`/api/chip-layout/jobs?equipmentUserId=${equipmentUserId}`)
+    const weekParam = viewWeekId ? `&week=${encodeURIComponent(viewWeekId)}` : "";
+    fetch(`/api/chip-layout/jobs?equipmentUserId=${equipmentUserId}${weekParam}`)
       .then((r) => r.json())
       .then((list: Job[]) => {
         setJobs(list);
@@ -185,10 +196,34 @@ export default function ChipLayoutEditor({
 
   useEffect(() => {
     loadJobs();
-    fetch(`/api/equipment-users/${equipmentUserId}/week-loading`)
+    const weekParam = viewWeekId ? `?week=${encodeURIComponent(viewWeekId)}` : "";
+    fetch(`/api/equipment-users/${equipmentUserId}/week-loading${weekParam}`)
       .then((r) => r.json())
       .then((d) => setThisWeekLoading(d.loadingCostMinutes));
-  }, [equipmentUserId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [equipmentUserId, viewWeekId]);
+
+  function toggleWeekPicker() {
+    if (!weekPickerOpen && !weeks) {
+      fetch("/api/queue/weeks")
+        .then((r) => r.json())
+        .then(setWeeks);
+    }
+    setWeekPickerOpen((o) => !o);
+  }
+
+  function selectWeek(w: WeekSummary) {
+    setViewWeekId(w.weekId);
+    setViewingOpen(w.isOpen);
+    setEditMode(false);
+    setWeekPickerOpen(false);
+  }
+
+  function backToCurrentWeek() {
+    setViewWeekId(null);
+    setViewingOpen(true);
+    setEditMode(false);
+  }
 
   useEffect(() => {
     if (selectedJobId == null) return;
@@ -217,6 +252,7 @@ export default function ChipLayoutEditor({
   }, [selectedExposureJob]);
 
   function onToggleEdit() {
+    if (!viewingOpen) return;
     if (editMode) {
       setEditMode(false);
       return;
@@ -475,6 +511,37 @@ export default function ChipLayoutEditor({
           {equipmentUserName} ({equipmentUserAlias}) · {t("ebeamJobSettingsHeading")}
         </h1>
         <div className="flex items-center gap-2">
+          <div className="relative">
+            <button
+              onClick={toggleWeekPicker}
+              className="rounded-md border border-black/15 dark:border-white/20 px-3 py-1.5 text-sm opacity-70 hover:opacity-100"
+            >
+              {t("pastExposureListsLabel")}
+            </button>
+            {weekPickerOpen && (
+              <>
+                <div className="fixed inset-0 z-10" onClick={() => setWeekPickerOpen(false)} />
+                <div className="absolute right-0 top-full z-20 mt-1 w-56 max-h-72 overflow-y-auto rounded-md border border-black/15 dark:border-white/20 bg-white dark:bg-neutral-900 py-1 shadow-lg">
+                  {weeks === null ? (
+                    <p className="px-3 py-2 text-xs opacity-60">{t("loadingEllipsis")}</p>
+                  ) : weeks.length === 0 ? (
+                    <p className="px-3 py-2 text-xs opacity-60">{t("noWeeksYet")}</p>
+                  ) : (
+                    weeks.map((w) => (
+                      <button
+                        key={w.weekId}
+                        onClick={() => selectWeek(w)}
+                        className="block w-full px-3 py-1.5 text-left text-xs hover:bg-black/5 dark:hover:bg-white/10"
+                      >
+                        {w.label}
+                        {w.isOpen && <span className="opacity-50"> ({t("currentWeekTag")})</span>}
+                      </button>
+                    ))
+                  )}
+                </div>
+              </>
+            )}
+          </div>
           <button
             onClick={() => setShowLoadingModal(true)}
             disabled={!editMode}
@@ -482,16 +549,27 @@ export default function ChipLayoutEditor({
           >
             {t("loadingTimeSettingsLabel")}
           </button>
-          <button
-            onClick={onToggleEdit}
-            className={`rounded-md px-3 py-1.5 text-sm ${
-              editMode ? "border border-black/15 dark:border-white/20" : "bg-blue-600 text-white"
-            }`}
-          >
-            {editMode ? t("viewModeLabel") : t("edit")}
-          </button>
+          {viewingOpen && (
+            <button
+              onClick={onToggleEdit}
+              className={`rounded-md px-3 py-1.5 text-sm ${
+                editMode ? "border border-black/15 dark:border-white/20" : "bg-blue-600 text-white"
+              }`}
+            >
+              {editMode ? t("viewModeLabel") : t("edit")}
+            </button>
+          )}
         </div>
       </div>
+
+      {!viewingOpen && (
+        <div className="flex items-center gap-2 mb-4 text-xs">
+          <span className="text-amber-500">{t("viewingPastWeekNotice")}</span>
+          <button onClick={backToCurrentWeek} className="underline opacity-70 hover:opacity-100">
+            {t("backToCurrentWeekLabel")}
+          </button>
+        </div>
+      )}
 
       <div className="flex items-center gap-2 mb-1 overflow-x-auto">
         <select
@@ -553,6 +631,8 @@ export default function ChipLayoutEditor({
       )}
 
       {error && <p className="text-sm text-red-500 mb-3">{error}</p>}
+
+      {!job && jobs.length === 0 && <p className="text-sm opacity-60">{t("noJobsLabel")}</p>}
 
       {job && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">

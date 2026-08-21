@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getSubmissionDetail, getWeeklySettings } from "@/lib/queue";
 import LayoutGridPreview from "@/components/LayoutGridPreview";
+import ExposureCompleteControl from "@/components/ExposureCompleteControl";
 import { computeMinPixelResolution } from "@fab-dashboard/scheduling/resolution";
 import { getServerLang } from "@/lib/i18n-server";
 import { translate, type Lang } from "@/lib/i18n";
@@ -47,12 +48,15 @@ export default async function QueueDetailPage({ params }: { params: Promise<{ id
         <h1 className="text-xl font-semibold">
           {detail.submittedBy} · {detail.gdsFilename}
         </h1>
-        <a
-          href={`/api/queue/${detail.id}/download`}
-          className="text-sm rounded-md border border-black/15 dark:border-white/20 px-3 py-1.5 hover:border-blue-500 shrink-0"
-        >
-          {t("downloadLabel")}
-        </a>
+        <div className="flex items-center gap-2 shrink-0">
+          <ExposureCompleteControl submissionId={detail.id} status={detail.status} assignedWeekId={detail.assignedWeekId} />
+          <a
+            href={`/api/queue/${detail.id}/download`}
+            className="text-sm rounded-md border border-black/15 dark:border-white/20 px-3 py-1.5 hover:border-blue-500 shrink-0"
+          >
+            {t("downloadLabel")}
+          </a>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 gap-4 text-sm mb-4">

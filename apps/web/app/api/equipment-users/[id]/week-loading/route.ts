@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
 import { getActiveWeekId, getWeekUserLoadingCostMinutes, setWeekUserLoadingSnapshot, recomputeWeekUser } from "@/lib/queue";
 
-/** This week's loading time for one equipment user — separate from equipment_users.loading_cost_minutes (the default), editable from the chip-layout job editor. */
-export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+/** One equipment user's loading time for a given week (defaults to the active week) — separate from equipment_users.loading_cost_minutes (the default), editable from the chip-layout job editor. */
+export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const weekId = getActiveWeekId();
+  const { searchParams } = new URL(request.url);
+  const weekId = searchParams.get("week") ?? getActiveWeekId();
   const loadingCostMinutes = getWeekUserLoadingCostMinutes(weekId, Number(id));
   return NextResponse.json({ weekId, loadingCostMinutes });
 }

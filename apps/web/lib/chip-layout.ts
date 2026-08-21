@@ -103,16 +103,25 @@ function getJobOrThrow(id: number): ChipLayoutJob {
   return job;
 }
 
-/** Lists an equipment user's batches for the currently active queue week only — auto-creating a default "Batch1" the first time this week (so the chip-layout page always has something to show, and a new week always starts empty regardless of past weeks' batches). */
-export function listJobs(equipmentUserId: number): ChipLayoutJob[] {
+/**
+ * Lists an equipment user's batches for one queue week — the active week by
+ * default, auto-creating a "Batch1" the first time this week (so the
+ * chip-layout page always has something to show, and a new week always
+ * starts empty regardless of past weeks' batches). An explicit past `weekId`
+ * is read-only: an empty result just means that week had no batches, and
+ * must never auto-create one (that would fabricate history).
+ */
+export function listJobs(equipmentUserId: number, weekId?: string): ChipLayoutJob[] {
   const db = getDb();
-  const weekId = getActiveWeekId();
+  const activeWeekId = getActiveWeekId();
+  const targetWeekId = weekId ?? activeWeekId;
   const rows = db
     .prepare(
       "SELECT * FROM chip_layout_jobs WHERE equipment_user_id = ? AND week_id = ? ORDER BY display_order ASC, id ASC",
     )
-    .all(equipmentUserId, weekId) as JobRow[];
+    .all(equipmentUserId, targetWeekId) as JobRow[];
   if (rows.length === 0) {
+    if (targetWeekId !== activeWeekId) return [];
     createJob(equipmentUserId, "Batch1");
     return listJobs(equipmentUserId);
   }
@@ -375,13 +384,19 @@ interface SubmissionForCandidates {
 function computeRawCandidates(batchId: number): Omit<PatternCandidateInternal, "slotIndex" | "slotLetter">[] {
   const db = getDb();
   const batch = getJobOrThrow(batchId);
-  const weekId = getActiveWeekId();
+  // The batch's own week, not whatever week happens to be globally active —
+  // otherwise a past week's batch would show the *current* week's candidates.
+  const weekId = batch.weekId;
 
+  // Both 'pending' and 'completed' submissions count as valid pattern
+  // sources — marking a submission exposed shouldn't make its GDS patterns
+  // vanish from candidate computation, only take it out of the scheduling
+  // backlog (see recomputeWeekUser).
   const submissions = db
     .prepare(
       `SELECT gds_filename, submitted_at, exposure_layers, layer_areas_um2, svg_stored_path,
               grid_left_um, grid_bottom_um, grid_right_um, grid_top_um
-       FROM layout_submissions WHERE equipment_user_id = ? AND assigned_week_id = ? AND status = 'pending'
+       FROM layout_submissions WHERE equipment_user_id = ? AND assigned_week_id = ? AND status IN ('pending', 'completed')
        ORDER BY submitted_at ASC, id ASC`,
     )
     .all(batch.equipmentUserId, weekId) as {
@@ -554,8 +569,18 @@ function listPatternCandidatesInternal(batchId: number): PatternCandidateInterna
     .map((c, i) => ({ ...c, slotIndex: i, slotLetter: slotLetterFor(i) }));
 }
 
-/** Removes placement instances (in any exposure job of this batch) referencing a pattern no longer in this week's queue — nothing to keep in sync otherwise, since patternKey isn't a foreign key. */
-function pruneOrphanedPlacementInstances(batchId: number, candidates: PatternCandidateInternal[]): void {
+/**
+ * Removes placement instances (in any exposure job of this batch) referencing
+ * a pattern no longer in this week's queue — nothing to keep in sync
+ * otherwise, since patternKey isn't a foreign key.
+ *
+ * Call this ONLY from an action that can actually shrink or move a week's GDS
+ * submissions (deleting a submission, cutover) — never from a read path. A
+ * batch-scoping bug here once caused a plain page view to silently delete
+ * real placements (candidates computed against the wrong week made everything
+ * look orphaned); getPatternCandidates() no longer calls this for that reason.
+ */
+function pruneOrphanedPlacementInstances(batchId: number, candidates: { patternKey: string }[]): void {
   const db = getDb();
   const exposureJobIds = db.prepare("SELECT id FROM chip_layout_exposure_jobs WHERE batch_id = ?").all(batchId) as {
     id: number;
@@ -579,10 +604,124 @@ function pruneOrphanedPlacementInstances(batchId: number, candidates: PatternCan
   tx();
 }
 
+interface PatternSnapshotRow {
+  pattern_key: string;
+  slot_index: number;
+  candidate_label: string;
+  size_x_um: number;
+  size_y_um: number;
+  area_um2: number;
+  svg_stored_path: string | null;
+  grid_left_um: number;
+  grid_bottom_um: number;
+  grid_right_um: number;
+  grid_top_um: number;
+  layer: number;
+  datatype: number;
+}
+
+function mapSnapshotRow(r: PatternSnapshotRow): PatternCandidateInternal {
+  return {
+    patternKey: r.pattern_key,
+    slotIndex: r.slot_index,
+    slotLetter: slotLetterFor(r.slot_index),
+    candidateLabel: r.candidate_label,
+    sizeXUm: r.size_x_um,
+    sizeYUm: r.size_y_um,
+    areaUm2: r.area_um2,
+    svgStoredPath: r.svg_stored_path,
+    gridLeftUm: r.grid_left_um,
+    gridBottomUm: r.grid_bottom_um,
+    gridRightUm: r.grid_right_um,
+    gridTopUm: r.grid_top_um,
+    layer: r.layer,
+    datatype: r.datatype,
+  };
+}
+
+function insertPatternSnapshot(batchId: number, candidates: PatternCandidateInternal[]): void {
+  const db = getDb();
+  const insert = db.prepare(
+    `INSERT OR REPLACE INTO chip_layout_pattern_snapshots
+       (batch_id, pattern_key, slot_index, candidate_label, size_x_um, size_y_um, area_um2, svg_stored_path,
+        grid_left_um, grid_bottom_um, grid_right_um, grid_top_um, layer, datatype)
+     VALUES (@batchId, @patternKey, @slotIndex, @candidateLabel, @sizeXUm, @sizeYUm, @areaUm2, @svgStoredPath,
+             @gridLeftUm, @gridBottomUm, @gridRightUm, @gridTopUm, @layer, @datatype)`,
+  );
+  const tx = db.transaction(() => {
+    for (const c of candidates) insert.run({ batchId, ...c });
+  });
+  tx();
+}
+
+/**
+ * Frozen pattern-candidate list for a batch whose week has already closed —
+ * populated lazily, once: the first time it's read after the week closes, it
+ * freezes whatever computeRawCandidates says *right then* and stores it, so
+ * later changes to that week's layout_submissions (e.g. a late "exposure
+ * complete" filing under this week) can no longer alter what a past batch's
+ * pattern view shows. Insert-only — a plain read never deletes anything here.
+ */
+function getOrCreateFrozenPatternSnapshot(batchId: number): PatternCandidateInternal[] {
+  const db = getDb();
+  const existing = db
+    .prepare("SELECT * FROM chip_layout_pattern_snapshots WHERE batch_id = ? ORDER BY slot_index ASC")
+    .all(batchId) as PatternSnapshotRow[];
+  if (existing.length > 0) return existing.map(mapSnapshotRow);
+
+  const live = listPatternCandidatesInternal(batchId);
+  if (live.length > 0) insertPatternSnapshot(batchId, live);
+  return live;
+}
+
 function getPatternCandidates(batchId: number): PatternCandidateInternal[] {
-  const candidates = listPatternCandidatesInternal(batchId);
-  pruneOrphanedPlacementInstances(batchId, candidates);
-  return candidates;
+  const batch = getJobOrThrow(batchId);
+  const db = getDb();
+  const week = db.prepare("SELECT status FROM weekly_queue_weeks WHERE week_id = ?").get(batch.weekId) as
+    | { status: string }
+    | undefined;
+  if (week?.status === "closed") return getOrCreateFrozenPatternSnapshot(batchId);
+  return listPatternCandidatesInternal(batchId);
+}
+
+/**
+ * Re-freezes a user's batches' pattern snapshots for one (already-closed)
+ * week — called when completeSubmission files a submission's completion
+ * under a past week, since that can introduce a pattern that wasn't part of
+ * this week's frozen snapshot yet. No-op for a still-open week (nothing
+ * frozen there in the first place).
+ */
+export function refreshPatternSnapshotForUserWeek(equipmentUserId: number, weekId: string): void {
+  const db = getDb();
+  const week = db.prepare("SELECT status FROM weekly_queue_weeks WHERE week_id = ?").get(weekId) as
+    | { status: string }
+    | undefined;
+  if (week?.status !== "closed") return;
+
+  const batches = db
+    .prepare("SELECT id FROM chip_layout_jobs WHERE equipment_user_id = ? AND week_id = ?")
+    .all(equipmentUserId, weekId) as { id: number }[];
+  for (const b of batches) {
+    db.prepare("DELETE FROM chip_layout_pattern_snapshots WHERE batch_id = ?").run(b.id);
+    getOrCreateFrozenPatternSnapshot(b.id);
+  }
+}
+
+/**
+ * Explicit orphan cleanup for one equipment user's batches in one queue week.
+ * Call this right after an action that removes or moves that week's GDS
+ * submissions (deleteSubmission, cutover) so any placement instance left
+ * pointing at a pattern that no longer exists gets cleaned up immediately —
+ * deliberately, not as a side effect of someone merely viewing the batch.
+ */
+export function pruneOrphanedPlacementsForUserWeek(equipmentUserId: number, weekId: string): void {
+  const db = getDb();
+  const batches = db
+    .prepare("SELECT id FROM chip_layout_jobs WHERE equipment_user_id = ? AND week_id = ?")
+    .all(equipmentUserId, weekId) as { id: number }[];
+  for (const b of batches) {
+    pruneOrphanedPlacementInstances(b.id, computeRawCandidates(b.id));
+  }
 }
 
 /** Public read-only pattern catalog for a batch's "패턴 목록" panel. */

@@ -2,8 +2,9 @@ import fs from "node:fs";
 import { getDb } from "./db";
 import { logAudit } from "./audit";
 import { scheduleWeek, estimateExposureTime, type Job } from "@fab-dashboard/scheduling/fcfs";
-import { currentWeekId } from "@fab-dashboard/scheduling/week-boundary";
+import { currentWeekId, formatWeekLabel } from "@fab-dashboard/scheduling/week-boundary";
 import type { GridBounds } from "./geometry";
+import { pruneOrphanedPlacementsForUserWeek, refreshPatternSnapshotForUserWeek } from "./chip-layout";
 
 export type { GridBounds };
 
@@ -172,11 +173,13 @@ export function getActiveWeekId(settings: WeeklySettings = getWeeklySettings()):
 }
 
 /**
- * Reschedules and recolors one equipment user's own pending submissions
- * within a week, using that user's own capacity snapshot — completely
- * independent of every other equipment user's schedule for the same week.
- * Self-heals a missing snapshot (e.g. a non-permanent user's first
- * submission in a week) by falling back to their current capacity_hours.
+ * Reschedules and recolors one equipment user's entire exposure backlog
+ * (every still-`pending` submission, regardless of which week it was
+ * originally assigned to — pending items are no longer partitioned by week,
+ * they just accumulate until explicitly marked exposed via completeSubmission)
+ * against `weekId`'s capacity snapshot — in practice always the active week,
+ * since only the active week's capacity is meaningful for scheduling a live
+ * backlog. Self-heals a missing snapshot by falling back to current defaults.
  */
 export function recomputeWeekUser(weekId: string, equipmentUserId: number): void {
   const db = getDb();
@@ -190,9 +193,9 @@ export function recomputeWeekUser(weekId: string, equipmentUserId: number): void
   const submissions = db
     .prepare(
       `SELECT id, submitted_at, ebeam_current_na, exposure_time_min_s, exposure_time_max_s
-       FROM layout_submissions WHERE assigned_week_id = ? AND equipment_user_id = ? AND status = 'pending'`,
+       FROM layout_submissions WHERE equipment_user_id = ? AND status = 'pending'`,
     )
-    .all(weekId, equipmentUserId) as {
+    .all(equipmentUserId) as {
     id: number;
     submitted_at: string;
     ebeam_current_na: number;
@@ -216,8 +219,8 @@ export function recomputeWeekUser(weekId: string, equipmentUserId: number): void
   tx();
 }
 
-/** Recomputes every equipment user active in a week (has a snapshot and/or pending submissions there), each independently via recomputeWeekUser. */
-function recomputeWeek(weekId: string): void {
+/** Recomputes every equipment user with backlog work (a pending submission anywhere, or a capacity snapshot for `weekId`), each rescheduled against `weekId`'s capacity via recomputeWeekUser. */
+function recomputeAllBacklogUsers(weekId: string): void {
   const db = getDb();
   const weekExists = db.prepare("SELECT 1 FROM weekly_queue_weeks WHERE week_id = ?").get(weekId);
   if (!weekExists) return;
@@ -226,9 +229,9 @@ function recomputeWeek(weekId: string): void {
     .prepare(
       `SELECT equipment_user_id FROM weekly_queue_week_users WHERE week_id = ?
        UNION
-       SELECT equipment_user_id FROM layout_submissions WHERE assigned_week_id = ? AND status = 'pending'`,
+       SELECT equipment_user_id FROM layout_submissions WHERE status = 'pending'`,
     )
-    .all(weekId, weekId) as { equipment_user_id: number }[];
+    .all(weekId) as { equipment_user_id: number }[];
 
   for (const { equipment_user_id } of userIds) {
     recomputeWeekUser(weekId, equipment_user_id);
@@ -368,40 +371,27 @@ interface QueueSubmissionRow {
   color: string | null;
 }
 
-function listWeekSubmissions(weekId: string, equipmentUserId?: number): QueueSubmissionRow[] {
-  const db = getDb();
-  const rows = (
-    equipmentUserId !== undefined
-      ? db
-          .prepare(
-            `SELECT id, submitted_by, submitted_at, gds_filename, resist_type, dose_label, reference_dose_uc_cm2, ebeam_current_na,
-                    exposure_time_calculated_s, exposure_time_min_s, exposure_time_max_s, status, color
-             FROM layout_submissions WHERE assigned_week_id = ? AND equipment_user_id = ? ORDER BY submitted_at ASC`,
-          )
-          .all(weekId, equipmentUserId)
-      : db
-          .prepare(
-            `SELECT id, submitted_by, submitted_at, gds_filename, resist_type, dose_label, reference_dose_uc_cm2, ebeam_current_na,
-                    exposure_time_calculated_s, exposure_time_min_s, exposure_time_max_s, status, color
-             FROM layout_submissions WHERE assigned_week_id = ? ORDER BY submitted_at ASC`,
-          )
-          .all(weekId)
-  ) as {
-    id: number;
-    submitted_by: string;
-    submitted_at: string;
-    gds_filename: string;
-    resist_type: string;
-    dose_label: string | null;
-    reference_dose_uc_cm2: number;
-    ebeam_current_na: number;
-    exposure_time_calculated_s: number;
-    exposure_time_min_s: number;
-    exposure_time_max_s: number;
-    status: string;
-    color: string | null;
-  }[];
-  return rows.map((r) => ({
+type SubmissionRowRaw = {
+  id: number;
+  submitted_by: string;
+  submitted_at: string;
+  gds_filename: string;
+  resist_type: string;
+  dose_label: string | null;
+  reference_dose_uc_cm2: number;
+  ebeam_current_na: number;
+  exposure_time_calculated_s: number;
+  exposure_time_min_s: number;
+  exposure_time_max_s: number;
+  status: string;
+  color: string | null;
+};
+
+const SUBMISSION_ROW_COLUMNS = `id, submitted_by, submitted_at, gds_filename, resist_type, dose_label, reference_dose_uc_cm2, ebeam_current_na,
+                    exposure_time_calculated_s, exposure_time_min_s, exposure_time_max_s, status, color`;
+
+function mapSubmissionRow(r: SubmissionRowRaw): QueueSubmissionRow {
+  return {
     id: r.id,
     submittedBy: r.submitted_by,
     submittedAt: formatKst(r.submitted_at),
@@ -415,7 +405,49 @@ function listWeekSubmissions(weekId: string, equipmentUserId?: number): QueueSub
     exposureTimeMaxS: r.exposure_time_max_s,
     status: r.status,
     color: r.color,
-  }));
+  };
+}
+
+/** The active-week view: every still-pending submission for a user (or everyone), regardless of which week it was originally submitted under — pending items accumulate in one backlog until explicitly marked exposed. */
+function listBacklogSubmissions(equipmentUserId?: number): QueueSubmissionRow[] {
+  const db = getDb();
+  const rows = (
+    equipmentUserId !== undefined
+      ? db
+          .prepare(
+            `SELECT ${SUBMISSION_ROW_COLUMNS}
+             FROM layout_submissions WHERE equipment_user_id = ? AND status = 'pending' ORDER BY submitted_at ASC`,
+          )
+          .all(equipmentUserId)
+      : db
+          .prepare(
+            `SELECT ${SUBMISSION_ROW_COLUMNS}
+             FROM layout_submissions WHERE status = 'pending' ORDER BY submitted_at ASC`,
+          )
+          .all()
+  ) as SubmissionRowRaw[];
+  return rows.map(mapSubmissionRow);
+}
+
+/** A past (closed) week's view: submissions explicitly filed as exposed under that week via completeSubmission. */
+function listCompletedSubmissionsForWeek(weekId: string, equipmentUserId?: number): QueueSubmissionRow[] {
+  const db = getDb();
+  const rows = (
+    equipmentUserId !== undefined
+      ? db
+          .prepare(
+            `SELECT ${SUBMISSION_ROW_COLUMNS}
+             FROM layout_submissions WHERE assigned_week_id = ? AND equipment_user_id = ? AND status = 'completed' ORDER BY submitted_at ASC`,
+          )
+          .all(weekId, equipmentUserId)
+      : db
+          .prepare(
+            `SELECT ${SUBMISSION_ROW_COLUMNS}
+             FROM layout_submissions WHERE assigned_week_id = ? AND status = 'completed' ORDER BY submitted_at ASC`,
+          )
+          .all(weekId)
+  ) as SubmissionRowRaw[];
+  return rows.map(mapSubmissionRow);
 }
 
 interface WeekLoadSummary {
@@ -426,15 +458,11 @@ interface WeekLoadSummary {
   totalExpectedMaxMinutes: number;
 }
 
-function getWeekLoadSummaryForUser(weekId: string, equipmentUserId: number): WeekLoadSummary {
-  const db = getDb();
-  const rows = db
-    .prepare(
-      `SELECT ebeam_current_na, exposure_time_calculated_s
-       FROM layout_submissions WHERE assigned_week_id = ? AND equipment_user_id = ? AND status = 'pending'`,
-    )
-    .all(weekId, equipmentUserId) as { ebeam_current_na: number; exposure_time_calculated_s: number }[];
-
+function summarizeLoad(
+  rows: { ebeam_current_na: number; exposure_time_calculated_s: number }[],
+  weekId: string,
+  equipmentUserId: number,
+): WeekLoadSummary {
   const distinctCurrents = new Set(rows.map((r) => r.ebeam_current_na));
   const totalLoadingMinutes = distinctCurrents.size * getWeekUserLoadingCostMinutes(weekId, equipmentUserId);
   const totalExposureMinutes = rows.reduce((sum, r) => sum + r.exposure_time_calculated_s / 60, 0);
@@ -453,6 +481,46 @@ function getWeekLoadSummaryForUser(weekId: string, equipmentUserId: number): Wee
   };
 }
 
+/** Active week: total pending backlog for this user, scheduled against `weekId`'s (the active week's) capacity. */
+function getBacklogLoadSummaryForUser(weekId: string, equipmentUserId: number): WeekLoadSummary {
+  const db = getDb();
+  const rows = db
+    .prepare(
+      `SELECT ebeam_current_na, exposure_time_calculated_s
+       FROM layout_submissions WHERE equipment_user_id = ? AND status = 'pending'`,
+    )
+    .all(equipmentUserId) as { ebeam_current_na: number; exposure_time_calculated_s: number }[];
+  return summarizeLoad(rows, weekId, equipmentUserId);
+}
+
+/** Past (closed) week: totals for whatever was actually filed as exposed under that week. */
+function getCompletedLoadSummaryForWeek(weekId: string, equipmentUserId: number): WeekLoadSummary {
+  const db = getDb();
+  const rows = db
+    .prepare(
+      `SELECT ebeam_current_na, exposure_time_calculated_s
+       FROM layout_submissions WHERE assigned_week_id = ? AND equipment_user_id = ? AND status = 'completed'`,
+    )
+    .all(weekId, equipmentUserId) as { ebeam_current_na: number; exposure_time_calculated_s: number }[];
+  return summarizeLoad(rows, weekId, equipmentUserId);
+}
+
+export interface WeekSummary {
+  weekId: string;
+  label: string;
+  isOpen: boolean;
+}
+
+/** Every week that has ever had a queue (current + past), most recent first — for the "past exposure lists" picker. */
+export function listWeeks(): WeekSummary[] {
+  const db = getDb();
+  const rows = db.prepare("SELECT week_id, status FROM weekly_queue_weeks ORDER BY week_id DESC").all() as {
+    week_id: string;
+    status: string;
+  }[];
+  return rows.map((r) => ({ weekId: r.week_id, label: formatWeekLabel(r.week_id), isOpen: r.status === "open" }));
+}
+
 export interface QueueSection extends WeekLoadSummary {
   equipmentUserId: number;
   equipmentUserName: string;
@@ -464,20 +532,31 @@ export interface QueueSection extends WeekLoadSummary {
 
 /**
  * Queue page sections: one per equipment user. Permanent users always get a
- * section (even with zero submissions this week); non-permanent users only
- * show up once they have a pending submission assigned to this week.
+ * section (even with zero submissions). Requesting the currently active week
+ * shows the accumulating pending backlog (unfiltered by original week);
+ * requesting any other (closed) week shows what was explicitly filed as
+ * exposed under that week via completeSubmission — a read-only history.
  */
 export function getQueueSections(weekId: string): QueueSection[] {
   const db = getDb();
+  const isActive = weekId === getActiveWeekId();
+  const memberCondition = isActive
+    ? "eu.id IN (SELECT equipment_user_id FROM layout_submissions WHERE status = 'pending')"
+    : "eu.id IN (SELECT equipment_user_id FROM layout_submissions WHERE assigned_week_id = ? AND status = 'completed')";
   const users = db
     .prepare(
       `SELECT DISTINCT eu.id, eu.name, eu.alias, eu.is_permanent, eu.display_order
        FROM equipment_users eu
-       WHERE eu.is_permanent = 1
-          OR eu.id IN (SELECT equipment_user_id FROM layout_submissions WHERE assigned_week_id = ? AND status = 'pending')
+       WHERE eu.is_permanent = 1 OR ${memberCondition}
        ORDER BY eu.is_permanent DESC, eu.display_order ASC, eu.name ASC`,
     )
-    .all(weekId) as { id: number; name: string; alias: string; is_permanent: number; display_order: number }[];
+    .all(...(isActive ? [] : [weekId])) as {
+    id: number;
+    name: string;
+    alias: string;
+    is_permanent: number;
+    display_order: number;
+  }[];
 
   return users.map((u) => {
     const snap = db
@@ -490,8 +569,8 @@ export function getQueueSections(weekId: string): QueueSection[] {
       equipmentUserAlias: u.alias,
       isPermanent: !!u.is_permanent,
       capacityHours: snap?.capacity_hours_snapshot ?? 0,
-      submissions: listWeekSubmissions(weekId, u.id),
-      ...getWeekLoadSummaryForUser(weekId, u.id),
+      submissions: isActive ? listBacklogSubmissions(u.id) : listCompletedSubmissionsForWeek(weekId, u.id),
+      ...(isActive ? getBacklogLoadSummaryForUser(weekId, u.id) : getCompletedLoadSummaryForWeek(weekId, u.id)),
     };
   });
 }
@@ -503,10 +582,6 @@ export function deleteSubmission(id: number): void {
     | undefined;
   if (!before) throw new Error("submission not found");
 
-  // Chip-layout placement instances reference patterns by a derived string
-  // key (see lib/chip-layout.ts), not a foreign key to layout_submissions,
-  // so deleting a submission needs no cleanup there — any now-orphaned
-  // instance self-prunes the next time that batch's candidates are read.
   db.prepare("DELETE FROM layout_submissions WHERE id = ?").run(id);
   logAudit("delete_submission", "layout_submission", id, before, null);
 
@@ -518,7 +593,16 @@ export function deleteSubmission(id: number): void {
     if (before.svg_stored_path) fs.rmSync(before.svg_stored_path, { force: true });
   }
 
-  recomputeWeekUser(before.assigned_week_id, before.equipment_user_id);
+  // Chip-layout placement instances reference patterns by a derived string
+  // key (see lib/chip-layout.ts), not a foreign key to layout_submissions, so
+  // deleting a submission can leave placements pointing at a pattern that no
+  // longer exists. Clean those up explicitly, right here, rather than as a
+  // side effect of some later unrelated page view.
+  pruneOrphanedPlacementsForUserWeek(before.equipment_user_id, before.assigned_week_id);
+
+  // The backlog is rescheduled against the currently active week's capacity,
+  // never the deleted item's own (possibly long-past) assigned_week_id.
+  recomputeWeekUser(getActiveWeekId(), before.equipment_user_id);
 }
 
 export interface SubmissionDetail extends QueueSubmissionRow {
@@ -530,6 +614,8 @@ export interface SubmissionDetail extends QueueSubmissionRow {
   gridBounds: GridBounds | null;
   equipmentUserName: string;
   equipmentUserAlias: string;
+  assignedWeekId: string;
+  completedAt: string | null;
 }
 
 export function getSubmissionDetail(id: number): SubmissionDetail | null {
@@ -569,6 +655,8 @@ export function getSubmissionDetail(id: number): SubmissionDetail | null {
         grid_bottom_um: number | null;
         grid_right_um: number | null;
         grid_top_um: number | null;
+        assigned_week_id: string;
+        completed_at: string | null;
       }
     | undefined;
   if (!row) return null;
@@ -605,20 +693,51 @@ export function getSubmissionDetail(id: number): SubmissionDetail | null {
     gridBounds,
     equipmentUserName: row.equipment_user_name,
     equipmentUserAlias: row.equipment_user_alias,
+    assignedWeekId: row.assigned_week_id,
+    completedAt: row.completed_at,
   };
+}
+
+/**
+ * Files a submission as exposed: reassigns it to `completedWeekId` (the week
+ * the equipment user says it actually ran), flips it out of the pending
+ * backlog, and stamps completed_at. If completedWeekId is already a closed
+ * (past) week, refreshes that week's chip-layout batches' frozen pattern
+ * snapshot so this newly-completed pattern shows up in that week's history.
+ */
+export function completeSubmission(id: number, completedWeekId: string): void {
+  const db = getDb();
+  const before = db.prepare("SELECT * FROM layout_submissions WHERE id = ?").get(id) as
+    | { equipment_user_id: number; status: string }
+    | undefined;
+  if (!before) throw new Error("submission not found");
+  if (before.status === "completed") throw new Error("already completed");
+
+  db.prepare(
+    `UPDATE layout_submissions
+     SET status = 'completed', assigned_week_id = ?, completed_at = datetime('now'), updated_at = datetime('now')
+     WHERE id = ?`,
+  ).run(completedWeekId, id);
+  logAudit("complete_submission", "layout_submission", id, before, { completedWeekId });
+
+  recomputeWeekUser(getActiveWeekId(), before.equipment_user_id);
+  refreshPatternSnapshotForUserWeek(before.equipment_user_id, completedWeekId);
 }
 
 export interface CutoverResult {
   fromWeekId: string;
   toWeekId: string;
-  movedCount: number;
 }
 
 /**
- * Rolls yellow/orange (unconfirmed) pending submissions from the currently
- * open week into a new week 7 days later, keeping their original
- * submitted_at so FCFS ordering naturally keeps them ahead of that week's
- * genuinely-new submissions. Manually-moved submissions are left alone.
+ * Opens a new queue week 7 days after the currently open one and closes the
+ * old one. Does NOT move any submissions — pending items are no longer
+ * partitioned by week; they stay in the backlog (still tagged with whatever
+ * week they were first submitted under) until an equipment user explicitly
+ * files them as exposed via completeSubmission. This only handles the
+ * per-equipment-user capacity/loading snapshot bookkeeping and which week is
+ * "active"; chip-layout batches roll over on their own (see
+ * lib/chip-layout.ts's listJobs auto-create-if-empty).
  */
 export function runManualCutover(): CutoverResult | null {
   const db = getDb();
@@ -636,37 +755,25 @@ export function runManualCutover(): CutoverResult | null {
 
   ensureWeek(toWeekId, settings.weeklyCapacityHours);
 
-  const toMove = db
-    .prepare(
-      `SELECT id FROM layout_submissions
-       WHERE assigned_week_id = ? AND status = 'pending' AND manually_moved = 0 AND color IN ('yellow','orange')`,
-    )
-    .all(fromWeekId) as { id: number }[];
-
-  const move = db.prepare(
-    "UPDATE layout_submissions SET assigned_week_id = ?, updated_at = datetime('now') WHERE id = ?",
-  );
   const tx = db.transaction(() => {
-    for (const row of toMove) move.run(toWeekId, row.id);
     db.prepare("UPDATE weekly_queue_weeks SET status = 'closed' WHERE week_id = ?").run(fromWeekId);
     db.prepare("UPDATE weekly_schedule_settings SET last_cutover_run_at = datetime('now') WHERE id = 1").run();
   });
   tx();
 
-  recomputeWeek(fromWeekId);
-  recomputeWeek(toWeekId);
+  recomputeAllBacklogUsers(toWeekId);
 
-  logAuditCutover(fromWeekId, toWeekId, toMove.length);
+  logAuditCutover(fromWeekId, toWeekId);
 
-  return { fromWeekId, toWeekId, movedCount: toMove.length };
+  return { fromWeekId, toWeekId };
 }
 
-function logAuditCutover(fromWeekId: string, toWeekId: string, movedCount: number): void {
+function logAuditCutover(fromWeekId: string, toWeekId: string): void {
   const db = getDb();
   db.prepare(
     `INSERT INTO audit_log (actor, action, entity_type, entity_id, before_json, after_json)
      VALUES ('admin', 'manual_cutover', 'weekly_queue_weeks', NULL, ?, ?)`,
-  ).run(JSON.stringify({ fromWeekId }), JSON.stringify({ toWeekId, movedCount }));
+  ).run(JSON.stringify({ fromWeekId }), JSON.stringify({ toWeekId }));
 }
 
 export function getReferenceData() {

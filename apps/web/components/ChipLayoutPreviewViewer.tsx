@@ -98,7 +98,18 @@ export default function ChipLayoutPreviewViewer({ equipmentUserId, jobId, jobNam
   }, [jobId]);
 
   const windowOptions = CASSETTE_WINDOW_KEYS[cassetteType];
-  const sortedCandidates = [...candidates].sort((a, b) => a.slotLetter.localeCompare(b.slotLetter));
+  // Slot letters are assigned per-batch (shared across all its exposure
+  // jobs), so a candidate placed in any one of them counts as "placed" here
+  // — the slot dictionary should only list patterns actually used somewhere
+  // in this batch, not every candidate available to place.
+  const placedSlotLetters = new Set(
+    Object.values(placementsByJob)
+      .flat()
+      .map((p) => p.slotLetter),
+  );
+  const sortedCandidates = candidates
+    .filter((c) => placedSlotLetters.has(c.slotLetter))
+    .sort((a, b) => a.slotLetter.localeCompare(b.slotLetter));
 
   return (
     <div className="max-w-3xl">

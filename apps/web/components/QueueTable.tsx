@@ -34,6 +34,12 @@ interface QueueSection {
   submissions: Submission[];
 }
 
+interface WeekSummary {
+  weekId: string;
+  label: string;
+  isOpen: boolean;
+}
+
 const COLOR_DOT: Record<string, string> = {
   green: "bg-green-500",
   yellow: "bg-amber-400",
@@ -55,15 +61,39 @@ interface QueueData {
 export default function QueueTable() {
   const [data, setData] = useState<QueueData | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [viewingOpen, setViewingOpen] = useState(true);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [weeks, setWeeks] = useState<WeekSummary[] | null>(null);
   const { lang, t } = useLanguage();
 
-  function load() {
-    fetch("/api/queue")
+  function load(weekId?: string) {
+    const url = weekId ? `/api/queue?week=${encodeURIComponent(weekId)}` : "/api/queue";
+    fetch(url)
       .then((r) => r.json())
       .then(setData);
   }
 
-  useEffect(load, []);
+  useEffect(() => load(), []);
+
+  function toggleWeekPicker() {
+    if (!pickerOpen && !weeks) {
+      fetch("/api/queue/weeks")
+        .then((r) => r.json())
+        .then(setWeeks);
+    }
+    setPickerOpen((o) => !o);
+  }
+
+  function selectWeek(w: WeekSummary) {
+    load(w.weekId);
+    setViewingOpen(w.isOpen);
+    setPickerOpen(false);
+  }
+
+  function backToCurrentWeek() {
+    load();
+    setViewingOpen(true);
+  }
 
   async function onDelete(e: React.MouseEvent, s: Submission) {
     e.preventDefault();
@@ -81,13 +111,55 @@ export default function QueueTable() {
 
   return (
     <div>
-      <p className="text-sm opacity-60 mb-4">
-        {formatWeekLabel(data.weekId)} {t("navQueue")} · {t("totalAvailableTimeLabel")}{" "}
-        {Math.round(data.weeklyCapacityHours * 60)}
-        {lang === "ko" ? "분" : " min"}
-      </p>
+      <div className="flex items-center justify-between gap-2 mb-1 flex-wrap">
+        <p className="text-sm opacity-60">
+          {formatWeekLabel(data.weekId)} {t("navQueue")} · {t("totalAvailableTimeLabel")}{" "}
+          {Math.round(data.weeklyCapacityHours * 60)}
+          {lang === "ko" ? "분" : " min"}
+        </p>
+        <div className="relative">
+          <button
+            onClick={toggleWeekPicker}
+            className="text-xs rounded-md border border-black/15 dark:border-white/20 px-2 py-1 opacity-70 hover:opacity-100"
+          >
+            {t("pastExposureListsLabel")}
+          </button>
+          {pickerOpen && (
+            <>
+              <div className="fixed inset-0 z-10" onClick={() => setPickerOpen(false)} />
+              <div className="absolute right-0 top-full z-20 mt-1 w-56 max-h-72 overflow-y-auto rounded-md border border-black/15 dark:border-white/20 bg-white dark:bg-neutral-900 py-1 shadow-lg">
+                {weeks === null ? (
+                  <p className="px-3 py-2 text-xs opacity-60">{t("loadingEllipsis")}</p>
+                ) : weeks.length === 0 ? (
+                  <p className="px-3 py-2 text-xs opacity-60">{t("noWeeksYet")}</p>
+                ) : (
+                  weeks.map((w) => (
+                    <button
+                      key={w.weekId}
+                      onClick={() => selectWeek(w)}
+                      className="block w-full px-3 py-1.5 text-left text-xs hover:bg-black/5 dark:hover:bg-white/10"
+                    >
+                      {w.label}
+                      {w.isOpen && <span className="opacity-50"> ({t("currentWeekTag")})</span>}
+                    </button>
+                  ))
+                )}
+              </div>
+            </>
+          )}
+        </div>
+      </div>
 
-      <div className="flex flex-col gap-6">
+      {!viewingOpen && (
+        <div className="flex items-center gap-2 mb-4 text-xs">
+          <span className="text-amber-500">{t("viewingCompletedWeekNotice")}</span>
+          <button onClick={backToCurrentWeek} className="underline opacity-70 hover:opacity-100">
+            {t("backToCurrentWeekLabel")}
+          </button>
+        </div>
+      )}
+
+      <div className="flex flex-col gap-6 mt-4">
         {data.sections.map((section) => (
           <div key={section.equipmentUserId}>
             <div className="flex items-baseline gap-2 mb-1">
@@ -136,13 +208,15 @@ export default function QueueTable() {
                       </p>
                     </div>
                     <span className="text-xs opacity-50 whitespace-nowrap">{s.submittedAt}</span>
-                    <button
-                      onClick={(e) => onDelete(e, s)}
-                      disabled={deletingId === s.id}
-                      className="text-red-500 text-xs disabled:opacity-50 shrink-0"
-                    >
-                      {t("delete")}
-                    </button>
+                    {viewingOpen && (
+                      <button
+                        onClick={(e) => onDelete(e, s)}
+                        disabled={deletingId === s.id}
+                        className="text-red-500 text-xs disabled:opacity-50 shrink-0"
+                      >
+                        {t("delete")}
+                      </button>
+                    )}
                   </Link>
                 ))}
               </div>

@@ -104,6 +104,11 @@ export default function SubmitPage() {
     setUploading(true);
     setError(null);
     setResult(null);
+    // Clear immediately (not just after the new upload resolves) — otherwise
+    // a cancel click during this async gap would see the *previous*,
+    // already-submitted upload's paths still sitting in uploadInfo with
+    // result now null, and delete those real files by mistake.
+    setUploadInfo(null);
     const form = new FormData();
     form.append("file", file);
     form.append("equipmentUserId", String(equipmentUserId));

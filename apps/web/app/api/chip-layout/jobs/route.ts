@@ -5,7 +5,8 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const equipmentUserId = Number(searchParams.get("equipmentUserId"));
   if (!equipmentUserId) return NextResponse.json({ error: "equipmentUserId required" }, { status: 400 });
-  return NextResponse.json(listJobs(equipmentUserId));
+  const weekId = searchParams.get("week") ?? undefined;
+  return NextResponse.json(listJobs(equipmentUserId, weekId));
 }
 
 export async function POST(request: Request) {

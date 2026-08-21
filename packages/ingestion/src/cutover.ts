@@ -86,7 +86,16 @@ function ensureWeek(weekId: string, capacityHours: number): void {
   }
 }
 
-/** Reschedules/recolors one equipment user's pending submissions in a week, using that user's own capacity+loading snapshot — independent of every other equipment user. */
+/**
+ * Reschedules/recolors one equipment user's entire pending backlog (every
+ * still-'pending' submission, regardless of which week it was originally
+ * assigned to — pending items are no longer partitioned by week, they just
+ * accumulate until explicitly filed as exposed via the web app's
+ * completeSubmission) against `weekId`'s capacity+loading snapshot, in
+ * practice always the active week. Kept in sync with the equivalent
+ * function in apps/web/lib/queue.ts (this package can't import from
+ * apps/web, so the scheduling logic is duplicated between the two).
+ */
 function recomputeWeekUser(weekId: string, equipmentUserId: number): void {
   const db = getDb();
   ensureWeekUserSnapshot(weekId, equipmentUserId);
@@ -99,9 +108,9 @@ function recomputeWeekUser(weekId: string, equipmentUserId: number): void {
   const submissions = db
     .prepare(
       `SELECT id, submitted_at, ebeam_current_na, exposure_time_min_s, exposure_time_max_s
-       FROM layout_submissions WHERE assigned_week_id = ? AND equipment_user_id = ? AND status = 'pending'`,
+       FROM layout_submissions WHERE equipment_user_id = ? AND status = 'pending'`,
     )
-    .all(weekId, equipmentUserId) as {
+    .all(equipmentUserId) as {
     id: number;
     submitted_at: string;
     ebeam_current_na: number;
@@ -125,8 +134,8 @@ function recomputeWeekUser(weekId: string, equipmentUserId: number): void {
   tx();
 }
 
-/** Recomputes every equipment user active in a week, each independently via recomputeWeekUser. */
-function recomputeWeek(weekId: string): void {
+/** Recomputes every equipment user with backlog work (a pending submission anywhere, or a capacity snapshot for `weekId`), each rescheduled against `weekId`'s capacity. */
+function recomputeAllBacklogUsers(weekId: string): void {
   const db = getDb();
   const weekExists = db.prepare("SELECT 1 FROM weekly_queue_weeks WHERE week_id = ?").get(weekId);
   if (!weekExists) return;
@@ -135,9 +144,9 @@ function recomputeWeek(weekId: string): void {
     .prepare(
       `SELECT equipment_user_id FROM weekly_queue_week_users WHERE week_id = ?
        UNION
-       SELECT equipment_user_id FROM layout_submissions WHERE assigned_week_id = ? AND status = 'pending'`,
+       SELECT equipment_user_id FROM layout_submissions WHERE status = 'pending'`,
     )
-    .all(weekId, weekId) as { equipment_user_id: number }[];
+    .all(weekId) as { equipment_user_id: number }[];
 
   for (const { equipment_user_id } of userIds) {
     recomputeWeekUser(weekId, equipment_user_id);
@@ -148,7 +157,6 @@ export interface CutoverCheckResult {
   ran: boolean;
   fromWeekId?: string;
   toWeekId?: string;
-  movedCount?: number;
 }
 
 /**
@@ -182,31 +190,24 @@ export function checkAndRunCutover(now: Date = new Date()): CutoverCheckResult {
   const fromWeekId = openWeek.week_id;
   const toWeekId = nowWeekId;
 
+  // Only the per-equipment-user capacity/loading bookkeeping and which week
+  // is "active" change here — pending submissions are no longer force-moved
+  // between weeks. They stay in the backlog (see recomputeWeekUser) until an
+  // equipment user explicitly files them as exposed via the web app's
+  // completeSubmission.
   ensureWeek(toWeekId, settings.weeklyCapacityHours);
 
-  const toMove = db
-    .prepare(
-      `SELECT id FROM layout_submissions
-       WHERE assigned_week_id = ? AND status = 'pending' AND manually_moved = 0 AND color IN ('yellow','orange')`,
-    )
-    .all(fromWeekId) as { id: number }[];
-
-  const move = db.prepare(
-    "UPDATE layout_submissions SET assigned_week_id = ?, updated_at = datetime('now') WHERE id = ?",
-  );
   const tx = db.transaction(() => {
-    for (const row of toMove) move.run(toWeekId, row.id);
     db.prepare("UPDATE weekly_queue_weeks SET status = 'closed' WHERE week_id = ?").run(fromWeekId);
     db.prepare("UPDATE weekly_schedule_settings SET last_cutover_run_at = datetime('now') WHERE id = 1").run();
     db.prepare(
       `INSERT INTO audit_log (actor, action, entity_type, entity_id, before_json, after_json)
        VALUES ('system:cutover', 'auto_cutover', 'weekly_queue_weeks', NULL, ?, ?)`,
-    ).run(JSON.stringify({ fromWeekId }), JSON.stringify({ toWeekId, movedCount: toMove.length }));
+    ).run(JSON.stringify({ fromWeekId }), JSON.stringify({ toWeekId }));
   });
   tx();
 
-  recomputeWeek(fromWeekId);
-  recomputeWeek(toWeekId);
+  recomputeAllBacklogUsers(toWeekId);
 
-  return { ran: true, fromWeekId, toWeekId, movedCount: toMove.length };
+  return { ran: true, fromWeekId, toWeekId };
 }

@@ -199,11 +199,12 @@ CREATE TABLE IF NOT EXISTS layout_submissions (
   exposure_time_calculated_s REAL,
   exposure_time_min_s REAL NOT NULL,
   exposure_time_max_s REAL NOT NULL,
-  status TEXT NOT NULL DEFAULT 'pending',
+  status TEXT NOT NULL DEFAULT 'pending', -- 'pending' | 'completed'
   assigned_week_id TEXT REFERENCES weekly_queue_weeks(week_id),
   color TEXT,
   manually_moved INTEGER NOT NULL DEFAULT 0,
   admin_note TEXT,
+  completed_at TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -338,6 +339,33 @@ CREATE TABLE IF NOT EXISTS chip_layout_placement_instances (
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_chip_layout_placement_instances_job ON chip_layout_placement_instances(exposure_job_id);
+
+-- Frozen pattern-candidate snapshot for a batch whose week has closed —
+-- populated lazily (insert-only, never deleted/overwritten by a plain read)
+-- the first time that batch's patterns are viewed after its week closes, so
+-- historical views stay stable even if layout_submissions later changes for
+-- that week (e.g. a late "exposure complete" filing). See
+-- lib/chip-layout.ts's getOrCreateFrozenPatternSnapshot.
+CREATE TABLE IF NOT EXISTS chip_layout_pattern_snapshots (
+  id INTEGER PRIMARY KEY,
+  batch_id INTEGER NOT NULL REFERENCES chip_layout_jobs(id),
+  pattern_key TEXT NOT NULL,
+  slot_index INTEGER NOT NULL,
+  candidate_label TEXT NOT NULL,
+  size_x_um REAL NOT NULL,
+  size_y_um REAL NOT NULL,
+  area_um2 REAL NOT NULL,
+  svg_stored_path TEXT,
+  grid_left_um REAL NOT NULL,
+  grid_bottom_um REAL NOT NULL,
+  grid_right_um REAL NOT NULL,
+  grid_top_um REAL NOT NULL,
+  layer INTEGER NOT NULL,
+  datatype INTEGER NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(batch_id, pattern_key)
+);
+CREATE INDEX IF NOT EXISTS idx_chip_layout_pattern_snapshots_batch ON chip_layout_pattern_snapshots(batch_id);
 
 CREATE TABLE IF NOT EXISTS audit_log (
   id INTEGER PRIMARY KEY,

@@ -473,6 +473,33 @@ export const dictionary = {
     en: "Each faint grid cell is one exposure field (1000×1000µm) the e-beam can write in a single pass. A pattern spanning a grid boundary may get a stitching error (a slight misalignment, up to 5-10nm). Keep important patterns within a single grid cell where possible.",
   },
   resetPositionLabel: { ko: "처음 위치로", en: "Reset View" },
+
+  // past exposure lists
+  pastExposureListsLabel: { ko: "지나간 노광 리스트", en: "Past Exposure Lists" },
+  backToCurrentWeekLabel: { ko: "현재 주차로 돌아가기", en: "Back to Current Week" },
+  currentWeekTag: { ko: "현재", en: "current" },
+  viewingPastWeekNotice: {
+    ko: "지난 주차를 보고 있습니다 — 읽기 전용",
+    en: "Viewing a past week — read-only",
+  },
+  noWeeksYet: { ko: "아직 노광 큐 기록이 없습니다.", en: "No exposure queue history yet." },
+  viewingCompletedWeekNotice: {
+    ko: "이 주차에 노광 완료 처리된 목록입니다 — 읽기 전용",
+    en: "Exposures marked complete under this week — read-only",
+  },
+
+  // exposure complete
+  exposureCompleteLabel: { ko: "노광 완료", en: "Mark Exposed" },
+  confirmExposureCompleteWarning: {
+    ko: "장비 사용자 전용 기능입니다. 장비 사용자가 아니라면 누르지 말아주세요!",
+    en: "This is for equipment users only. Please don't press this unless you are the equipment user!",
+  },
+  selectCompletionWeekLabel: {
+    ko: "실제로 노광 완료한 주차를 선택하세요",
+    en: "Select the week this was actually exposed in",
+  },
+  completedInWeekLabel: { ko: "완료됨", en: "Completed" },
+  completeSubmissionFailed: { ko: "노광 완료 처리 실패", en: "Failed to mark as exposed" },
 } as const;
 
 export type DictKey = keyof typeof dictionary;
