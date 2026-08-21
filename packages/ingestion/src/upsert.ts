@@ -89,6 +89,27 @@ function resolveOrCreateChipRun(
   return Number(result.lastInsertRowid);
 }
 
+/**
+ * Recomputes each stage's per-type occurrence number (seq) from its current
+ * display position (sort_order). Mirrors apps/web/lib/admin-data.ts's
+ * renumberSeq (that copy runs after admin edits like delete/reorder/move;
+ * this one runs after ingestion writes) — kept as a separate copy since this
+ * package can't import Next.js app code.
+ */
+function renumberSeq(chipRunId: number): void {
+  const db = getDb();
+  const stages = db
+    .prepare("SELECT id, stage_type FROM pipeline_stage_instances WHERE chip_run_id = ? ORDER BY sort_order ASC, id ASC")
+    .all(chipRunId) as { id: number; stage_type: string }[];
+
+  const counters: Record<string, number> = {};
+  const update = db.prepare("UPDATE pipeline_stage_instances SET seq = ? WHERE id = ?");
+  for (const s of stages) {
+    counters[s.stage_type] = (counters[s.stage_type] ?? 0) + 1;
+    update.run(counters[s.stage_type], s.id);
+  }
+}
+
 function upsertStages(chipRunId: number, stages: ExtractedStage[], noteDate: string, notePath: string) {
   const db = getDb();
 
@@ -182,6 +203,8 @@ function upsertStages(chipRunId: number, stages: ExtractedStage[], noteDate: str
       );
     attachPhotos(chipRunId, Number(result.lastInsertRowid), stage.photos, notePath);
   }
+
+  renumberSeq(chipRunId);
 }
 
 function attachPhotos(
