@@ -144,7 +144,7 @@ export default function ChipLayoutEditor({
   const [previewModalOpen, setPreviewModalOpen] = useState(false);
   const [draggedPatternKey, setDraggedPatternKey] = useState<string | null>(null);
   const [dragOverPatternKey, setDragOverPatternKey] = useState<string | null>(null);
-  const [patternListAnimateRef] = useAutoAnimate<HTMLDivElement>();
+  const [patternListAnimateRef, setPatternListAnimateEnabled] = useAutoAnimate<HTMLDivElement>();
   // useAutoAnimate's ref is a callback, not a RefObject — this plain ref holds the
   // same DOM node too (merged onto the element below) so drag-over auto-scroll can
   // read its scrollTop/bounds without fighting auto-animate for ref ownership.
@@ -196,7 +196,7 @@ export default function ChipLayoutEditor({
   }
 
   function loadPatternCandidates(jobId: number) {
-    fetch(`/api/chip-layout/jobs/${jobId}/patterns`)
+    return fetch(`/api/chip-layout/jobs/${jobId}/patterns`)
       .then((r) => r.json())
       .then(setPatternCandidates);
   }
@@ -465,8 +465,23 @@ export default function ChipLayoutEditor({
       const d = await res.json();
       setError(d.error ?? t("slotChangeFailed"));
     }
-    loadPatternCandidates(job.id);
+    // @formkit/auto-animate mis-measures this reorder's FLIP delta when the list's
+    // own scrollTop is nonzero (from the edge auto-scroll above) while the page
+    // itself is also scrolled: it walks up to the first ancestor with nonzero
+    // scroll for a reference frame, and that ancestor can differ between its
+    // "before" and "after" position captures — the rows briefly fly off by
+    // roughly the page's scroll offset before easing back into place. Disabling
+    // the animation for just this refetch-driven update avoids the bad math;
+    // re-enabled right after so other list changes (e.g. the initial load) still
+    // animate normally.
+    setPatternListAnimateEnabled(false);
+    await loadPatternCandidates(job.id);
     if (selectedExposureJobId) loadPlacementInstances(selectedExposureJobId);
+    // Re-enabling has to wait until *after* the browser has actually painted the
+    // reordered DOM — awaiting the fetch only guarantees setPatternCandidates was
+    // called, not that React's resulting commit has been painted yet. A double
+    // rAF reliably lands after that paint.
+    requestAnimationFrame(() => requestAnimationFrame(() => setPatternListAnimateEnabled(true)));
   }
 
   function handlePatternDragStart(patternKey: string) {
