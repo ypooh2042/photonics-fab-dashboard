@@ -111,13 +111,13 @@ export default function QueueTable() {
 
   return (
     <div>
-      <div className="flex items-center justify-between gap-2 mb-1 flex-wrap">
+      <div className="relative flex items-center justify-between gap-2 mb-1 flex-wrap">
         <p className="text-sm opacity-60">
           {formatWeekLabel(data.weekId)} {t("navQueue")} · {t("totalAvailableTimeLabel")}{" "}
           {Math.round(data.weeklyCapacityHours * 60)}
           {lang === "ko" ? "분" : " min"}
         </p>
-        <div className="relative">
+        <div>
           <button
             onClick={toggleWeekPicker}
             className="text-xs rounded-md border border-black/15 dark:border-white/20 px-2 py-1 opacity-70 hover:opacity-100"
@@ -127,7 +127,11 @@ export default function QueueTable() {
           {pickerOpen && (
             <>
               <div className="fixed inset-0 z-10" onClick={() => setPickerOpen(false)} />
-              <div className="absolute right-0 top-full z-20 mt-1 w-56 max-h-72 overflow-y-auto rounded-md border border-black/15 dark:border-white/20 bg-white dark:bg-neutral-900 py-1 shadow-lg">
+              {/* Anchored to the row (not the button) so it can't end up pinned
+                  off the left edge when the button wraps onto its own line on
+                  narrow screens — right-0 here always tracks the row's own
+                  right edge, which stays put regardless of wrapping. */}
+              <div className="absolute right-0 top-full z-20 mt-1 w-56 max-w-[90vw] max-h-72 overflow-y-auto rounded-md border border-black/15 dark:border-white/20 bg-white dark:bg-neutral-900 py-1 shadow-lg">
                 {weeks === null ? (
                   <p className="px-3 py-2 text-xs opacity-60">{t("loadingEllipsis")}</p>
                 ) : weeks.length === 0 ? (

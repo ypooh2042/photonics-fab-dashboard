@@ -510,8 +510,8 @@ export default function ChipLayoutEditor({
         <h1 className="text-xl font-semibold">
           {equipmentUserName} ({equipmentUserAlias}) · {t("ebeamJobSettingsHeading")}
         </h1>
-        <div className="flex items-center gap-2">
-          <div className="relative">
+        <div className="relative flex items-center gap-2">
+          <div>
             <button
               onClick={toggleWeekPicker}
               className="rounded-md border border-black/15 dark:border-white/20 px-3 py-1.5 text-sm opacity-70 hover:opacity-100"
@@ -521,7 +521,10 @@ export default function ChipLayoutEditor({
             {weekPickerOpen && (
               <>
                 <div className="fixed inset-0 z-10" onClick={() => setWeekPickerOpen(false)} />
-                <div className="absolute right-0 top-full z-20 mt-1 w-56 max-h-72 overflow-y-auto rounded-md border border-black/15 dark:border-white/20 bg-white dark:bg-neutral-900 py-1 shadow-lg">
+                {/* Anchored to the button-group row, not just the button, so it
+                    can't get pinned off the left edge if this row's layout
+                    shifts on narrow screens. */}
+                <div className="absolute right-0 top-full z-20 mt-1 w-56 max-w-[90vw] max-h-72 overflow-y-auto rounded-md border border-black/15 dark:border-white/20 bg-white dark:bg-neutral-900 py-1 shadow-lg">
                   {weeks === null ? (
                     <p className="px-3 py-2 text-xs opacity-60">{t("loadingEllipsis")}</p>
                   ) : weeks.length === 0 ? (

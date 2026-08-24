@@ -59,7 +59,7 @@ export default function ExposureCompleteControl({ submissionId, status, assigned
   }
 
   return (
-    <div className="relative inline-block">
+    <div className="inline-block">
       <button
         onClick={openPicker}
         disabled={submitting}
@@ -70,7 +70,10 @@ export default function ExposureCompleteControl({ submissionId, status, assigned
       {pickerOpen && (
         <>
           <div className="fixed inset-0 z-10" onClick={() => setPickerOpen(false)} />
-          <div className="absolute right-0 top-full z-20 mt-1 w-64 max-h-72 overflow-y-auto rounded-md border border-black/15 dark:border-white/20 bg-white dark:bg-neutral-900 py-1 shadow-lg">
+          {/* Anchored to the page's header row (the nearest `relative`
+              ancestor, in queue/[id]/page.tsx), not this button, so it can't
+              get pinned off the left edge if the row wraps on narrow screens. */}
+          <div className="absolute right-0 top-full z-20 mt-1 w-64 max-w-[90vw] max-h-72 overflow-y-auto rounded-md border border-black/15 dark:border-white/20 bg-white dark:bg-neutral-900 py-1 shadow-lg">
             <p className="px-3 py-1.5 text-xs opacity-60">{t("selectCompletionWeekLabel")}</p>
             {weeks === null ? (
               <p className="px-3 py-2 text-xs opacity-60">{t("loadingEllipsis")}</p>

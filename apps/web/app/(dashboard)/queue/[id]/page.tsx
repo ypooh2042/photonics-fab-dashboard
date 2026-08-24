@@ -44,7 +44,7 @@ export default async function QueueDetailPage({ params }: { params: Promise<{ id
       <Link href="/queue" className="text-sm opacity-60 hover:opacity-100">
         ← {t("navQueue")}
       </Link>
-      <div className="flex items-center justify-between gap-4 mt-2 mb-4 flex-wrap">
+      <div className="relative flex items-center justify-between gap-4 mt-2 mb-4 flex-wrap">
         <h1 className="text-xl font-semibold">
           {detail.submittedBy} · {detail.gdsFilename}
         </h1>
