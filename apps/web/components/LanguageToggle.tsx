@@ -15,6 +15,7 @@ export default function LanguageToggle() {
 
   return (
     <button
+      type="button"
       onClick={toggle}
       className="shrink-0 text-xs opacity-80 hover:opacity-100 rounded-md border border-black/15 dark:border-white/20 px-2 py-1"
       title={lang === "ko" ? "Switch to English" : "한국어로 전환"}

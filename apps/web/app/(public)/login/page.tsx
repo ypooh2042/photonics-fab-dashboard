@@ -1,12 +1,11 @@
 "use client";
 
 import { useState, Suspense } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { useLanguage } from "@/components/LanguageContext";
 import LanguageToggle from "@/components/LanguageToggle";
 
 function LoginForm() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -27,8 +26,12 @@ function LoginForm() {
       setError(t("loginError"));
       return;
     }
-    router.push(searchParams.get("next") ?? "/");
-    router.refresh();
+    // Hard navigation, not router.push()+router.refresh(): if the target route
+    // was already visited while unauthenticated, the App Router's client cache
+    // can hold onto the earlier "redirect to /login" result and bounce the user
+    // right back after a successful login. A full page load always re-fetches
+    // fresh from the server, which now sees the just-set session cookie.
+    window.location.href = searchParams.get("next") ?? "/";
   }
 
   return (
