@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useAutoAnimate } from "@formkit/auto-animate/react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import WindowCanvas from "./WindowCanvas";
@@ -134,9 +135,39 @@ export default function ChipLayoutEditor({
   const [thisWeekLoading, setThisWeekLoading] = useState<number | null>(null);
   const [showLoadingModal, setShowLoadingModal] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [exposureJobError, setExposureJobError] = useState<string | null>(null);
+  // Keyed by exposure job id, not a single shared string — each job's constraint
+  // violation (e.g. a scanStep floor) is independent, so editing one job must never
+  // clear another job's still-unresolved error.
+  const [exposureJobErrors, setExposureJobErrors] = useState<Record<number, string>>({});
+  const [addExposureJobError, setAddExposureJobError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [previewModalOpen, setPreviewModalOpen] = useState(false);
+  const [draggedPatternKey, setDraggedPatternKey] = useState<string | null>(null);
+  const [dragOverPatternKey, setDragOverPatternKey] = useState<string | null>(null);
+  const [patternListAnimateRef] = useAutoAnimate<HTMLDivElement>();
+  // useAutoAnimate's ref is a callback, not a RefObject — this plain ref holds the
+  // same DOM node too (merged onto the element below) so drag-over auto-scroll can
+  // read its scrollTop/bounds without fighting auto-animate for ref ownership.
+  const patternListElRef = useRef<HTMLDivElement | null>(null);
+  // Must be a stable function identity: an inline arrow here would be a new ref on
+  // every render, causing React to detach+reattach it each time — and
+  // useAutoAnimate's callback calls setController() unconditionally on every
+  // attach (autoAnimate() returns a fresh object each call, so it never bails
+  // out), which turned into an infinite render loop when this wasn't memoized.
+  const setPatternListEl = useCallback(
+    (el: HTMLDivElement | null) => {
+      patternListAnimateRef(el);
+      patternListElRef.current = el;
+    },
+    [patternListAnimateRef],
+  );
+  // Signed px/frame for the edge auto-scroll below, driven by rAF rather than
+  // dragover frequency — a stationary cursor still fires dragover, but only
+  // ~every 350ms per spec, which reads as a choppy stutter-step rather than a
+  // scroll. 0 means "not scrolling"; the rAF loop below is only running while
+  // this is nonzero.
+  const autoScrollSpeedRef = useRef(0);
+  const autoScrollFrameRef = useRef<number | null>(null);
 
   /** current/dose/scanStep are edited via independent onBlur handlers per input, but the device-spec minimum couples all three — committing them one at a time would validate against a stale sibling value still in the DB. These refs let any of the three blurs send the other two's live (possibly-not-yet-committed) values too, so validation always reflects what's actually on screen. */
   const exposureJobInputRefs = useRef<Record<number, { currentInput?: HTMLInputElement | null; doseInput?: HTMLInputElement | null; scanStepInput?: HTMLInputElement | null }>>({});
@@ -227,7 +258,8 @@ export default function ChipLayoutEditor({
 
   useEffect(() => {
     if (selectedJobId == null) return;
-    setExposureJobError(null);
+    setExposureJobErrors({});
+    setAddExposureJobError(null);
     loadChips(selectedJobId);
     loadPatternCandidates(selectedJobId);
     loadExposureJobs(selectedJobId);
@@ -354,7 +386,7 @@ export default function ChipLayoutEditor({
 
   async function addExposureJob() {
     if (!job) return;
-    setExposureJobError(null);
+    setAddExposureJobError(null);
     const res = await fetch(`/api/chip-layout/jobs/${job.id}/exposure-jobs`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -362,7 +394,7 @@ export default function ChipLayoutEditor({
     });
     const d = await res.json();
     if (!res.ok) {
-      setExposureJobError(d.error ?? t("exposureJobAddFailed"));
+      setAddExposureJobError(d.error ?? t("exposureJobAddFailed"));
       return;
     }
     loadExposureJobs(job.id, d.id);
@@ -371,14 +403,21 @@ export default function ChipLayoutEditor({
 
   async function updateExposureJobField(id: number, patch: Partial<{ currentNa: number; doseUcCm2: number; scanStep: number; windowKey: WindowKey }>) {
     if (!job) return;
-    setExposureJobError(null);
     const res = await fetch(`/api/chip-layout/exposure-jobs/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(patch),
     });
     const d = await res.json();
-    if (!res.ok) setExposureJobError(d.error ?? t("exposureJobUpdateFailed"));
+    // Only this job's own entry is touched — never clear or overwrite another
+    // job's error just because this one's request happened to resolve.
+    setExposureJobErrors((prev) => {
+      if (!res.ok) return { ...prev, [id]: d.error ?? t("exposureJobUpdateFailed") };
+      if (!(id in prev)) return prev;
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
     loadExposureJobs(job.id);
     loadExposureSummary(job.id);
     if (id === selectedExposureJobId) loadPlacementInstances(id);
@@ -393,29 +432,34 @@ export default function ChipLayoutEditor({
     const unchanged = currentNa === ej.currentNa && doseUcCm2 === ej.doseUcCm2 && scanStep === ej.scanStep;
     // A rejected edit never persists, so `ej` (loaded from the DB) still equals whatever was valid
     // before the failed attempt — if the user "fixes" a field back to exactly that value, this looks
-    // unchanged and would otherwise skip the request, leaving the stale error banner up forever.
-    if (unchanged && !exposureJobError) return;
+    // unchanged and would otherwise skip the request, leaving this job's stale error banner up forever.
+    if (unchanged && !exposureJobErrors[ej.id]) return;
     updateExposureJobField(ej.id, { currentNa, doseUcCm2, scanStep });
   }
 
   async function deleteExposureJobBtn(id: number, name: string) {
     if (!job) return;
     if (!window.confirm(`"${name}" ${t("confirmDeleteExposureJobGeneric")}`)) return;
-    setExposureJobError(null);
+    setExposureJobErrors((prev) => {
+      if (!(id in prev)) return prev;
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
     await fetch(`/api/chip-layout/exposure-jobs/${id}`, { method: "DELETE" });
     if (selectedExposureJobId === id) setSelectedExposureJobId(null);
     loadExposureJobs(job.id);
     loadExposureSummary(job.id);
   }
 
-  /** Reorders which pattern this slot letter shows — placement instances reference patterns by patternKey, not slot, so their displayed slot updates automatically on reload. */
-  async function assignPatternSlotHandler(slotIndex: number, patternKey: string) {
+  /** Drag-to-reorder the pattern list — slot letters are derived from position, so this rewrites everyone's slot_index; placement instances reference patterns by patternKey, not slot, so their displayed slot updates automatically on reload. */
+  async function reorderPatternCandidatesHandler(orderedPatternKeys: string[]) {
     if (!job) return;
     setError(null);
-    const res = await fetch(`/api/chip-layout/jobs/${job.id}/patterns/assign-slot`, {
+    const res = await fetch(`/api/chip-layout/jobs/${job.id}/patterns/reorder`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ slotIndex, patternKey }),
+      body: JSON.stringify({ patternKeys: orderedPatternKeys }),
     });
     if (!res.ok) {
       const d = await res.json();
@@ -423,6 +467,118 @@ export default function ChipLayoutEditor({
     }
     loadPatternCandidates(job.id);
     if (selectedExposureJobId) loadPlacementInstances(selectedExposureJobId);
+  }
+
+  function handlePatternDragStart(patternKey: string) {
+    setDraggedPatternKey(patternKey);
+  }
+
+  function stopPatternAutoScroll() {
+    autoScrollSpeedRef.current = 0;
+    if (autoScrollFrameRef.current !== null) {
+      cancelAnimationFrame(autoScrollFrameRef.current);
+      autoScrollFrameRef.current = null;
+    }
+  }
+
+  function runPatternAutoScrollFrame() {
+    const el = patternListElRef.current;
+    if (el && autoScrollSpeedRef.current !== 0) {
+      el.scrollTop += autoScrollSpeedRef.current;
+      autoScrollFrameRef.current = requestAnimationFrame(runPatternAutoScrollFrame);
+    } else {
+      autoScrollFrameRef.current = null;
+    }
+  }
+
+  function handlePatternDragEnd() {
+    setDraggedPatternKey(null);
+    setDragOverPatternKey(null);
+    stopPatternAutoScroll();
+  }
+
+  /**
+   * The list is capped at max-h-56 (most batches have more patterns than fit),
+   * so dragging near its top/bottom edge scrolls it — without this, rows
+   * outside the visible window are simply unreachable as drop targets.
+   * Sets a speed for the rAF loop above rather than scrolling directly here:
+   * a cursor held still over the edge still fires dragover, but only ~every
+   * 350ms per spec, which reads as a stutter-step, not a scroll — rAF gives a
+   * smooth scroll regardless of how often dragover happens to fire.
+   */
+  function updatePatternAutoScrollSpeed(clientY: number) {
+    const el = patternListElRef.current;
+    if (!el) return;
+    const EDGE_PX = 28;
+    const MAX_SPEED_PX_PER_FRAME = 6;
+    const rect = el.getBoundingClientRect();
+    const distFromTop = clientY - rect.top;
+    const distFromBottom = rect.bottom - clientY;
+    let speed = 0;
+    if (distFromTop < EDGE_PX) {
+      speed = -MAX_SPEED_PX_PER_FRAME * (1 - Math.max(distFromTop, 0) / EDGE_PX);
+    } else if (distFromBottom < EDGE_PX) {
+      speed = MAX_SPEED_PX_PER_FRAME * (1 - Math.max(distFromBottom, 0) / EDGE_PX);
+    }
+    autoScrollSpeedRef.current = speed;
+    if (speed !== 0 && autoScrollFrameRef.current === null) {
+      autoScrollFrameRef.current = requestAnimationFrame(runPatternAutoScrollFrame);
+    } else if (speed === 0) {
+      stopPatternAutoScroll();
+    }
+  }
+
+  // dragover fires (and bubbles) for whatever element is under the cursor, whether
+  // or not it's inside the list — so a document-level listener, active only while
+  // a pattern is being dragged, is the only reliable way to notice the cursor has
+  // left the list and stop the auto-scroll. Row-level onDragOver alone can't: once
+  // the cursor is outside the list, none of those handlers fire again, so a speed
+  // set while still near an edge would otherwise keep scrolling indefinitely.
+  useEffect(() => {
+    if (draggedPatternKey === null) return;
+    function onDocumentDragOver(e: DragEvent) {
+      const el = patternListElRef.current;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      const inside = e.clientY >= rect.top && e.clientY <= rect.bottom && e.clientX >= rect.left && e.clientX <= rect.right;
+      if (inside) {
+        updatePatternAutoScrollSpeed(e.clientY);
+      } else {
+        stopPatternAutoScroll();
+      }
+    }
+    document.addEventListener("dragover", onDocumentDragOver);
+    return () => document.removeEventListener("dragover", onDocumentDragOver);
+    // updatePatternAutoScrollSpeed/stopPatternAutoScroll only close over refs (never
+    // state or props), so they're effectively stable — re-running this effect for
+    // them on every render would just re-attach the identical listener for nothing.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draggedPatternKey]);
+
+  function handlePatternDragOver(e: React.DragEvent, targetPatternKey: string) {
+    if (draggedPatternKey === null) return;
+    e.preventDefault();
+    if (dragOverPatternKey !== targetPatternKey) setDragOverPatternKey(targetPatternKey);
+  }
+
+  function handlePatternDragLeave(targetPatternKey: string) {
+    setDragOverPatternKey((cur) => (cur === targetPatternKey ? null : cur));
+  }
+
+  function handlePatternDrop(e: React.DragEvent, targetPatternKey: string) {
+    e.preventDefault();
+    setDragOverPatternKey(null);
+    stopPatternAutoScroll();
+    if (!draggedPatternKey || draggedPatternKey === targetPatternKey) return;
+    const keys = patternCandidates.map((c) => c.patternKey);
+    const fromIdx = keys.indexOf(draggedPatternKey);
+    const toIdx = keys.indexOf(targetPatternKey);
+    setDraggedPatternKey(null);
+    if (fromIdx === -1 || toIdx === -1) return;
+    const reordered = [...keys];
+    reordered.splice(fromIdx, 1);
+    reordered.splice(toIdx, 0, draggedPatternKey);
+    reorderPatternCandidatesHandler(reordered);
   }
 
   async function placePattern(patternKey: string) {
@@ -826,7 +982,16 @@ export default function ChipLayoutEditor({
                     </div>
                   </div>
                 </div>
-                {exposureJobError && <p className="text-xs text-red-500 mt-2">{exposureJobError}</p>}
+                {addExposureJobError && <p className="text-xs text-red-500 mt-2">{addExposureJobError}</p>}
+                {Object.entries(exposureJobErrors).map(([id, message]) => {
+                  const ej = exposureJobs.find((e) => e.id === Number(id));
+                  return (
+                    <p key={id} className="text-xs text-red-500 mt-2">
+                      {ej ? `${ej.name}: ` : ""}
+                      {message}
+                    </p>
+                  );
+                })}
               </div>
 
               {/* Pattern list | Pattern placement — shares the left column's width with chip/Job management above */}
@@ -837,32 +1002,48 @@ export default function ChipLayoutEditor({
                   <div className="overflow-x-auto">
                     <div className="min-w-max">
                       {patternCandidates.length > 0 && (
-                        <div className="grid grid-cols-[9rem_3rem_2.75rem] gap-1 text-[10px] opacity-50 mb-0.5">
-                          <span className="text-center">{t("patternNameColumnLabel")}</span>
+                        <div className="grid grid-cols-[1.5rem_9rem_1.25rem_2.25rem] gap-1 text-[10px] opacity-50 mb-0.5">
                           <span className="text-center">{t("slotColumnLabel")}</span>
+                          <span className="text-center">{t("patternNameColumnLabel")}</span>
+                          <span />
                           <span />
                         </div>
                       )}
-                      <div className="max-h-56 overflow-y-auto flex flex-col gap-1">
+                      <div ref={setPatternListEl} className="max-h-56 overflow-y-auto flex flex-col gap-1">
                         {patternCandidates.map((c) => (
-                          <div key={c.patternKey} className="grid grid-cols-[9rem_3rem_2.75rem] gap-1 items-center text-xs">
+                          <div
+                            key={c.patternKey}
+                            className={`grid grid-cols-[1.5rem_9rem_1.25rem_2.25rem] gap-1 items-center text-xs rounded-md border transition-colors ${
+                              draggedPatternKey === c.patternKey
+                                ? "border-black dark:border-white opacity-60"
+                                : dragOverPatternKey === c.patternKey
+                                  ? "border-transparent ring-2 ring-blue-500"
+                                  : "border-transparent"
+                            }`}
+                            onDragOver={(e) => handlePatternDragOver(e, c.patternKey)}
+                            onDragLeave={() => handlePatternDragLeave(c.patternKey)}
+                            onDrop={(e) => handlePatternDrop(e, c.patternKey)}
+                          >
+                            <span className="text-center font-semibold opacity-70">{c.slotLetter}</span>
                             <span className="whitespace-normal break-words leading-tight py-0.5">{c.candidateLabel}</span>
-                            <select
-                              value={c.slotIndex}
-                              disabled={!editMode}
-                              onChange={(e) => assignPatternSlotHandler(Number(e.target.value), c.patternKey)}
-                              className="w-full rounded-md border border-black/15 dark:border-white/20 bg-transparent px-1 py-0.5 disabled:opacity-50"
-                            >
-                              {patternCandidates.map((opt) => (
-                                <option key={opt.slotIndex} value={opt.slotIndex}>
-                                  {opt.slotLetter}
-                                </option>
-                              ))}
-                            </select>
+                            {editMode ? (
+                              <span
+                                draggable
+                                onDragStart={() => handlePatternDragStart(c.patternKey)}
+                                onDragEnd={handlePatternDragEnd}
+                                className="cursor-grab select-none text-center text-sm opacity-40 hover:opacity-70 active:cursor-grabbing"
+                                aria-label={t("dragToReorderLabel")}
+                                title={t("dragToReorderLabel")}
+                              >
+                                ⠿
+                              </span>
+                            ) : (
+                              <span />
+                            )}
                             <button
                               onClick={() => placePattern(c.patternKey)}
                               disabled={!editMode || !selectedExposureJobId}
-                              className="rounded-md border border-black/15 dark:border-white/20 px-0.5 py-0.5 text-[10px] whitespace-nowrap disabled:opacity-50"
+                              className="rounded-md border border-black/15 dark:border-white/20 px-0 py-0.5 text-[9px] whitespace-nowrap disabled:opacity-50"
                             >
                               {t("placeButtonLabel")}
                             </button>

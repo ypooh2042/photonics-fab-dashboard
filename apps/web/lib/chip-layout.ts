@@ -522,34 +522,38 @@ function ensurePatternSlotsForBatch(batchId: number, candidates: { patternKey: s
 }
 
 /**
- * Reassigns which pattern occupies slot letter `slotIndex` by swapping its
- * current slot with whichever pattern is being displaced — a straight swap
- * can never produce two slots pointing at the same pattern.
+ * Reorders this batch's pattern list to match `orderedPatternKeys` — slot
+ * letters are purely derived from array position (see slotLetterFor), so
+ * reordering is just rewriting each pattern's slot_index to its new index.
+ * `orderedPatternKeys` must be a permutation of the batch's current pattern
+ * keys (same set, same length) — the caller (the drag-to-reorder UI) always
+ * derives it from a freshly loaded candidate list, so a mismatch means the
+ * list changed underneath the user and they should reload before retrying.
  */
-export function assignPatternSlot(batchId: number, slotIndex: number, patternKey: string): void {
+export function reorderPatternSlots(batchId: number, orderedPatternKeys: string[]): void {
   const db = getDb();
   getJobOrThrow(batchId);
   ensurePatternSlotsForBatch(batchId, computeRawCandidates(batchId));
 
-  const target = db
-    .prepare("SELECT id, slot_index FROM chip_layout_pattern_slots WHERE batch_id = ? AND pattern_key = ?")
-    .get(batchId, patternKey) as { id: number; slot_index: number } | undefined;
-  if (!target) throw new Error("존재하지 않는 패턴입니다");
+  const existing = db
+    .prepare("SELECT id, pattern_key FROM chip_layout_pattern_slots WHERE batch_id = ?")
+    .all(batchId) as { id: number; pattern_key: string }[];
+  const idByKey = new Map(existing.map((e) => [e.pattern_key, e.id]));
 
-  const occupant = db
-    .prepare("SELECT id FROM chip_layout_pattern_slots WHERE batch_id = ? AND slot_index = ?")
-    .get(batchId, slotIndex) as { id: number } | undefined;
-  if (!occupant) throw new Error("존재하지 않는 슬롯입니다");
-  if (occupant.id === target.id) return;
+  const isSamePatternSet =
+    orderedPatternKeys.length === existing.length && orderedPatternKeys.every((key) => idByKey.has(key));
+  if (!isSamePatternSet) {
+    throw new Error("패턴 목록이 최신 상태와 일치하지 않습니다. 새로고침 후 다시 시도하세요.");
+  }
 
   const tx = db.transaction(() => {
-    db.prepare("UPDATE chip_layout_pattern_slots SET slot_index = -1 WHERE id = ?").run(target.id);
-    db.prepare("UPDATE chip_layout_pattern_slots SET slot_index = ? WHERE id = ?").run(target.slot_index, occupant.id);
-    db.prepare("UPDATE chip_layout_pattern_slots SET slot_index = ? WHERE id = ?").run(slotIndex, target.id);
+    orderedPatternKeys.forEach((key, i) => {
+      db.prepare("UPDATE chip_layout_pattern_slots SET slot_index = ? WHERE id = ?").run(i, idByKey.get(key));
+    });
   });
   tx();
 
-  logAudit("assign_chip_layout_pattern_slot", "chip_layout_pattern_slots", null, null, { batchId, slotIndex, patternKey });
+  logAudit("reorder_chip_layout_pattern_slots", "chip_layout_pattern_slots", null, null, { batchId, orderedPatternKeys });
 }
 
 /** Full candidate list in a/b/c/... slot order (the persisted, user-reorderable order — see ensurePatternSlotsForBatch). */
