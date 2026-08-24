@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import WindowCanvas from "./WindowCanvas";
 import ChipLayoutPreviewModal from "./ChipLayoutPreviewModal";
-import { chipFillColor } from "@/lib/chip-colors";
+import { chipFillColor, jobAccentColor } from "@/lib/chip-colors";
 import { useLanguage } from "@/components/LanguageContext";
 import type { Lang } from "@/lib/i18n";
 
@@ -124,6 +124,12 @@ export default function ChipLayoutEditor({
   const [exposureJobs, setExposureJobs] = useState<ExposureJob[]>([]);
   const [selectedExposureJobId, setSelectedExposureJobId] = useState<number | null>(null);
   const [placementInstances, setPlacementInstances] = useState<PlacementInstance[]>([]);
+  // Placements across *every* exposure job in the batch, not just the selected one —
+  // fed to WindowCanvas so the canvas shows the whole physical picture of what's in
+  // the window (avoiding overlaps between exposure jobs matters more than only
+  // seeing one job's placements at a time). placementInstances above stays scoped
+  // to the selected job alone, since only that one's placements are editable.
+  const [allBatchPlacements, setAllBatchPlacements] = useState<PlacementInstance[]>([]);
   const [exposureSummary, setExposureSummary] = useState<ExposureSummary | null>(null);
   const [selectedWindowKey, setSelectedWindowKey] = useState<WindowKey>("B");
   const [editMode, setEditMode] = useState(false);
@@ -273,6 +279,28 @@ export default function ChipLayoutEditor({
     }
     loadPlacementInstances(selectedExposureJobId);
   }, [selectedExposureJobId]);
+
+  // Re-fetches whenever the exposure job list changes (jobs added/removed) or
+  // whenever the selected job's own placements change (a stand-in for "some
+  // placement was just mutated" — every add/move/delete already reloads
+  // placementInstances, so its identity changing is a reliable trigger here too).
+  useEffect(() => {
+    if (exposureJobs.length === 0) {
+      setAllBatchPlacements([]);
+      return;
+    }
+    let cancelled = false;
+    Promise.all(
+      exposureJobs.map((ej) =>
+        fetch(`/api/chip-layout/exposure-jobs/${ej.id}/placements`).then((r) => r.json() as Promise<PlacementInstance[]>),
+      ),
+    ).then((lists) => {
+      if (!cancelled) setAllBatchPlacements(lists.flat());
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [exposureJobs, placementInstances]);
 
   useEffect(() => {
     if (!job) return;
@@ -670,7 +698,8 @@ export default function ChipLayoutEditor({
   }
 
   const chipsInWindow = chips.filter((c) => c.windowKey === selectedWindowKey);
-  const placementsInWindow = placementInstances.filter((p) => p.windowKey === selectedWindowKey);
+  const placementsInWindow = allBatchPlacements.filter((p) => p.windowKey === selectedWindowKey);
+  const exposureJobColorIndex = new Map(exposureJobs.map((ej, i) => [ej.id, i]));
 
   return (
     <div className="max-w-6xl">
@@ -1163,6 +1192,8 @@ export default function ChipLayoutEditor({
                         centerYUm: p.centerYUm,
                         sizeXUm: p.sizeXUm,
                         sizeYUm: p.sizeYUm,
+                        color: jobAccentColor(exposureJobColorIndex.get(p.exposureJobId) ?? 0),
+                        selected: p.exposureJobId === selectedExposureJobId,
                       }))}
                     />
                   )}
@@ -1173,8 +1204,8 @@ export default function ChipLayoutEditor({
                   </p>
                 )}
                 <p className="text-xs opacity-50 mt-1">
-                  {t("windowOnlyShowsHintPrefix")} &quot;{selectedExposureJob?.name ?? "-"}&quot;
-                  {t("windowOnlyShowsHintSuffix")}
+                  {t("windowShowsAllJobsHintPrefix")} &quot;{selectedExposureJob?.name ?? "-"}&quot;
+                  {t("windowShowsAllJobsHintSuffix")}
                 </p>
 
                 <button

@@ -447,10 +447,13 @@ export const dictionary = {
   noPatternsThisWeekLabel: { ko: "이번 주 노광할 패턴이 없습니다.", en: "No patterns to expose this week." },
   patternPlacementLabel: { ko: "패턴 배치", en: "Pattern Placement" },
   noPlacedPatternsLabel: { ko: "배치된 패턴이 없습니다.", en: "No placed patterns." },
-  windowOnlyShowsHintPrefix: { ko: "이 창에는 선택된 Job", en: "This window only shows placements from the selected job" },
-  windowOnlyShowsHintSuffix: {
-    ko: "의 배치만 표시됩니다. 전체 패턴 뷰는 모든 Job의 배치를 함께 보여줍니다.",
-    en: ". The full pattern view shows placements from all jobs together.",
+  windowShowsAllJobsHintPrefix: {
+    ko: "이 창에는 이 window에 배치된 모든 Job이 함께 표시됩니다 — 선택된 Job(굵게)은",
+    en: "This window shows placements from every job together — the selected job (bold) is",
+  },
+  windowShowsAllJobsHintSuffix: {
+    ko: "입니다.",
+    en: ".",
   },
   fullPatternViewLabel: { ko: "전체 패턴 뷰", en: "Full Pattern View" },
   fullPatternViewSummaryLabel: { ko: "전체 패턴 뷰 & 파라미터 요약", en: "Full Pattern View & Parameter Summary" },

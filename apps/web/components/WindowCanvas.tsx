@@ -18,6 +18,9 @@ interface CanvasPattern {
   centerYUm: number;
   sizeXUm: number;
   sizeYUm: number;
+  color: string;
+  /** Belongs to the exposure job currently selected in the left-side list — kept at the original stroke weight with a bold label, while everything else recedes (thin stroke, normal weight), so the canvas can show every exposure job's placements in the window at once without the selected one getting lost among them. */
+  selected: boolean;
 }
 
 interface Props {
@@ -173,10 +176,18 @@ export default function WindowCanvas({ widthUm, heightUm, chips, patterns }: Pro
               width={wMm}
               height={hMm}
               fill="none"
-              stroke="#dc2626"
-              strokeWidth={0.12}
+              stroke={p.color}
+              strokeWidth={p.selected ? 0.12 : 0.06}
             />
-            <text x={cx} y={cy} fontSize={1.4} textAnchor="middle" dominantBaseline="middle" fill="#dc2626">
+            <text
+              x={cx}
+              y={cy}
+              fontSize={1.4}
+              textAnchor="middle"
+              dominantBaseline="middle"
+              fill={p.color}
+              fontWeight={p.selected ? "bold" : "normal"}
+            >
               {p.label}
             </text>
           </g>
